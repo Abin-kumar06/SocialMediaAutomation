@@ -22,7 +22,12 @@ class OllamaCaptionService:
             response = requests.post(self.generate_url, json=payload, timeout=180)
             response.raise_for_status()
             result = response.json()
-            return result.get("response", "").strip()
+            raw = result.get("response", "").strip()
+            # Strip surrounding quotes that LLMs sometimes add
+            if (raw.startswith('"') and raw.endswith('"')) or \
+               (raw.startswith("'") and raw.endswith("'")):
+                raw = raw[1:-1].strip()
+            return raw
         except requests.exceptions.RequestException as e:
             raise HTTPException(
                 status_code=503,

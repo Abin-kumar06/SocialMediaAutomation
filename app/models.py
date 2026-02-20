@@ -56,3 +56,28 @@ class LinkedInPostResponse(BaseModel):
 
 
     caption: Optional[str] = None
+
+
+class ScheduledPostResponse(BaseModel):
+    """Response when a post is successfully scheduled"""
+    success: bool
+    job_id: str
+    scheduled_at: str
+    platform: str
+    message: str
+
+
+class ScheduledJobInfo(BaseModel):
+    """Info about a single scheduled job"""
+    job_id: str
+    platform: str
+    scheduled_at: str
+    status: str
+    post_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+class ScheduledJobsListResponse(BaseModel):
+    """List of all scheduled jobs"""
+    jobs: List[ScheduledJobInfo]
+    total: int

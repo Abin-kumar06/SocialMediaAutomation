@@ -6,11 +6,16 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, HTTPException, BackgroundTasks, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
-from app.models import InstagramPostResponse, HealthCheck, InstagramMultiPostResponse, LinkedInPostResponse, LinkedInAccount
+from app.models import (
+    InstagramPostResponse, HealthCheck, InstagramMultiPostResponse,
+    LinkedInPostResponse, LinkedInAccount,
+    ScheduledPostResponse, ScheduledJobInfo, ScheduledJobsListResponse
+)
 from app.config import settings
 from app.services import ImageService, InstagramService
 from app.services.ollama_caption_service import OllamaCaptionService
 from app.services.linkedin_service import LinkedInService
+import app.services.scheduler_service as scheduler_svc
 from app.services.instagram_token_service import InstagramTokenService, InstagramReauthRequired
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -31,14 +36,34 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠ Instagram token bootstrap failed: {e}")
 
-    # Daily scheduler to refresh tokens expiring soon
-    scheduler = BackgroundScheduler(timezone="UTC")
+    # Two job stores:
+    #  - "default" (SQLite): post jobs survive hot-reloads (picklable args only)
+    #  - "memory": token refresh uses a bound method that can't be pickled
+    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+    from apscheduler.jobstores.memory import MemoryJobStore
+    from apscheduler.executors.pool import ThreadPoolExecutor
+
+    jobstores = {
+        "default": SQLAlchemyJobStore(url="sqlite:///scheduler.db"),
+        "memory": MemoryJobStore(),
+    }
+    executors = {
+        "default": ThreadPoolExecutor(max_workers=5)
+    }
+    scheduler = BackgroundScheduler(
+        jobstores=jobstores,
+        executors=executors,
+        timezone="UTC",
+        job_defaults={"misfire_grace_time": 300}   # fire up to 5 min late
+    )
+    # Token refresh goes to memory store (bound method is not picklable)
     scheduler.add_job(
         token_service.scheduled_refresh,
         trigger="interval",
         days=1,
         kwargs={"within_days": 10},
         id="instagram_token_daily_refresh",
+        jobstore="memory",
         replace_existing=True,
     )
     scheduler.start()
@@ -84,7 +109,7 @@ async def health_check():
         "status": "online",
         "instagram_account_id": settings.INSTAGRAM_ACCOUNT_ID,
         "api_version": "v22.0",
-        "upload_dir": settings.UPLOAD_DIR,
+        "upload_dir": str(settings.UPLOAD_DIR),
         "config_status": settings.get_config_status()
     }
 
@@ -383,6 +408,7 @@ async def create_instagram_post_async(
         
         hosted_image_url = image_service.upload_to_cloud(file_path)
 
+        final_caption = caption  # Default to manual caption
         if auto_caption:
             # Auto-generation is enabled - generate caption from prompt
             try:
@@ -643,6 +669,218 @@ async def config_check():
     return results
 
 # Gemini internal check removed as we moved to Ollama locally.
+
+
+# ---------------------------------------------------------------------------
+# Scheduled Posting Endpoints
+# ---------------------------------------------------------------------------
+
+def _parse_scheduled_at(scheduled_at: str) -> datetime:
+    """Parse ISO-8601 string. Naive datetimes are treated as LOCAL server time."""
+    try:
+        dt = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid scheduled_at format: '{scheduled_at}'. Use ISO-8601, e.g. 2026-02-20T18:30:00"
+        )
+    # If no timezone given, assume LOCAL time (not UTC)
+    if dt.tzinfo is None:
+        import time as _time
+        local_offset = _time.timezone if not _time.daylight else _time.altzone
+        from datetime import timedelta
+        dt = dt.replace(tzinfo=timezone(timedelta(seconds=-local_offset)))
+    # Convert to UTC for APScheduler
+    dt_utc = dt.astimezone(timezone.utc)
+    if dt_utc <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="scheduled_at must be in the future")
+    return dt_utc
+
+
+@app.post("/schedule-post", response_model=ScheduledPostResponse)
+async def schedule_instagram_post(
+    scheduled_at: str = Form(..., description="Future datetime in ISO-8601 format, e.g. 2026-02-20T18:30:00"),
+    file: UploadFile = File(None, description="Image file (JPG, PNG)"),
+    image_url: str = Form(None, description="Direct URL to a public image"),
+    caption: str = Form(None, description="Post caption"),
+    auto_caption: bool = Form(False, description="Generate caption automatically with Ollama"),
+    prompt: str = Form(None, description="Prompt for auto caption generation"),
+    keywords: str = Form(None, description="Comma-separated keywords"),
+    platform: str = Form("instagram"),
+):
+    """Schedule a single-image Instagram post for a future time."""
+    if not file and not image_url:
+        raise HTTPException(status_code=400, detail="Provide either file or image_url")
+    if not caption and not auto_caption:
+        raise HTTPException(status_code=400, detail="Provide either caption or enable auto_caption with a prompt")
+    if auto_caption and not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required when auto_caption=true")
+
+    run_at = _parse_scheduled_at(scheduled_at)
+
+    # Upload / download image now so the URL is ready at execution time
+    file_path = None
+    try:
+        if file:
+            file_path = await image_service.save_upload(file)
+        else:
+            file_path = await image_service.process_image_from_url(image_url)
+        hosted_url = image_service.upload_to_cloud(file_path)
+    finally:
+        if file_path:
+            image_service.cleanup_file(file_path)
+
+    # Resolve caption
+    final_caption = caption
+    if auto_caption:
+        try:
+            keyword_list = [k.strip() for k in (keywords or "").split(",") if k.strip()]
+            generated = ollama_service.generate_caption(
+                platform=platform,
+                topic=f"{prompt}. Keywords: {', '.join(keyword_list)}" if keyword_list else prompt
+            )
+            final_caption = generated.get("full_caption") or caption or "Check it out! 📸"
+        except Exception as e:
+            print(f"⚠ Caption generation failed: {e}")
+            final_caption = caption or "Check it out! 📸"
+    if not final_caption:
+        final_caption = "Check it out! 📸"
+
+    scheduler = app.state.scheduler
+    job_id = scheduler_svc.schedule_instagram_post(scheduler, run_at, hosted_url, final_caption)
+
+    return ScheduledPostResponse(
+        success=True,
+        job_id=job_id,
+        scheduled_at=run_at.isoformat(),
+        platform="instagram",
+        message=f"Instagram post scheduled for {run_at.isoformat()}"
+    )
+
+
+@app.post("/schedule-multi-post", response_model=ScheduledPostResponse)
+async def schedule_instagram_multi_post(
+    scheduled_at: str = Form(..., description="Future datetime in ISO-8601 format"),
+    files: List[UploadFile] = File(None, description="Multiple image files (JPG, PNG)"),
+    image_urls: str = Form(None, description="Comma-separated direct image URLs"),
+    caption: str = Form(None, description="Post caption"),
+    auto_caption: bool = Form(False),
+    prompt: str = Form(None),
+    keywords: str = Form(None),
+    platform: str = Form("instagram"),
+):
+    """Schedule a multi-image Instagram carousel for a future time."""
+    if not files and not image_urls:
+        raise HTTPException(status_code=400, detail="Provide either files or image_urls")
+    if not caption and not auto_caption:
+        raise HTTPException(status_code=400, detail="Provide either caption or enable auto_caption with a prompt")
+    if auto_caption and not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required when auto_caption=true")
+
+    run_at = _parse_scheduled_at(scheduled_at)
+
+    url_list = [u.strip() for u in (image_urls or "").split(",") if u.strip()]
+    hosted_urls = await image_service.process_and_host_images(files, url_list)
+
+    final_caption = caption
+    if auto_caption:
+        try:
+            keyword_list = [k.strip() for k in (keywords or "").split(",") if k.strip()]
+            generated = ollama_service.generate_caption(
+                platform=platform,
+                topic=f"{prompt}. Keywords: {', '.join(keyword_list)}" if keyword_list else prompt
+            )
+            final_caption = generated.get("full_caption") or caption or "Check it out! 📸"
+        except Exception as e:
+            print(f"⚠ Caption generation failed: {e}")
+            final_caption = caption or "Check it out! 📸"
+    if not final_caption:
+        final_caption = "Check it out! 📸"
+
+    scheduler = app.state.scheduler
+    job_id = scheduler_svc.schedule_instagram_carousel(scheduler, run_at, hosted_urls, final_caption)
+
+    return ScheduledPostResponse(
+        success=True,
+        job_id=job_id,
+        scheduled_at=run_at.isoformat(),
+        platform="instagram_carousel",
+        message=f"Instagram carousel scheduled for {run_at.isoformat()}"
+    )
+
+
+@app.post("/api/platforms/linkedin/schedule-post", response_model=ScheduledPostResponse)
+async def schedule_linkedin_post(
+    scheduled_at: str = Form(..., description="Future datetime in ISO-8601 format"),
+    member_urn: str = Form(..., description="LinkedIn member URN"),
+    text: str = Form(None, description="Post text"),
+    file: UploadFile = File(None, description="Image file (JPG, PNG)"),
+    image_url: str = Form(None, description="Direct image URL (will be downloaded)"),
+    auto_caption: bool = Form(False),
+    prompt: str = Form(None),
+):
+    """Schedule a LinkedIn post (text or image) for a future time."""
+    if not text and not auto_caption:
+        raise HTTPException(status_code=400, detail="Provide either text or enable auto_caption with a prompt")
+    if auto_caption and not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required when auto_caption=true")
+
+    account = linkedin_service.store.get_account(member_urn)
+    if not account:
+        raise HTTPException(status_code=404, detail="LinkedIn account not found. Please connect first.")
+
+    run_at = _parse_scheduled_at(scheduled_at)
+
+    # Resolve text
+    final_text = text
+    if auto_caption:
+        try:
+            generated = ollama_service.generate_caption(platform="linkedin", topic=prompt)
+            final_text = generated.get("full_caption") or text
+        except Exception as e:
+            print(f"⚠ Caption generation failed: {e}")
+            final_text = text
+
+    # Save uploaded file permanently until job fires (don't cleanup yet)
+    saved_path = None
+    if file:
+        saved_path = await image_service.save_upload(file)
+        saved_path = str(saved_path)
+    elif image_url:
+        dl_path = await image_service.process_image_from_url(image_url)
+        saved_path = str(dl_path)
+
+    scheduler = app.state.scheduler
+    job_id = scheduler_svc.schedule_linkedin_post(
+        scheduler, run_at, member_urn, account.access_token, final_text, saved_path
+    )
+
+    return ScheduledPostResponse(
+        success=True,
+        job_id=job_id,
+        scheduled_at=run_at.isoformat(),
+        platform="linkedin",
+        message=f"LinkedIn post scheduled for {run_at.isoformat()}"
+    )
+
+
+@app.get("/scheduled-posts", response_model=ScheduledJobsListResponse)
+async def list_scheduled_posts():
+    """List all scheduled, running, published, and failed post jobs."""
+    jobs = scheduler_svc.list_jobs()
+    return ScheduledJobsListResponse(
+        jobs=[ScheduledJobInfo(**j) for j in jobs],
+        total=len(jobs)
+    )
+
+
+@app.delete("/scheduled-posts/{job_id}")
+async def cancel_scheduled_post(job_id: str):
+    """Cancel a pending scheduled post by job_id."""
+    found = scheduler_svc.cancel_job(app.state.scheduler, job_id)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    return {"success": True, "job_id": job_id, "message": "Scheduled post cancelled"}
 
 
 if __name__ == "__main__":
