@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinkedIn Post Tester</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+            background: #f3f2ef;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        h1 {
+            color: #0077b5;
+            margin-top: 0;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        input[type="text"],
+        textarea,
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background: #0077b5;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            width: 100%;
+        }
+
+        button:hover {
+            background: #006097;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+            word-wrap: break-word;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .preview {
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .preview img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 4px;
+        }
+
+        .helper-text {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        code {
+            background: #eee;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>LinkedIn Post Tester</h1>
+
+        <div class="form-group">
+            <label>1. Connect Account</label>
+            <a href="/api/platforms/linkedin/connect" target="_blank"
+                style="color: #0077b5; text-decoration: none; font-weight: bold;">
+                🔗 Connect LinkedIn Account
+            </a>
+            <div class="helper-text">Click above to authorize. Copy the "account.urn" from the success JSON.</div>
+        </div>
+
+        <form id="postForm">
+            <div class="form-group">
+                <label for="memberUrn">2. Member URN (from connection step)</label>
+                <input type="text" id="memberUrn" placeholder="urn:li:person:..." required>
+                <div class="helper-text">Example: <code>urn:li:person:AbCdEf123</code></div>
+            </div>
+
+            <div class="form-group">
+                <label for="prompt">3. AI Prompt (Optional)</label>
+                <textarea id="prompt" rows="2"
+                    placeholder="Describe the post topic to generate a caption..."></textarea>
+                <button type="button" id="generateBtn" style="margin-top: 5px; background: #004182;">✨ Generate
+                    Caption</button>
+            </div>
+
+            <div class="form-group">
+                <label for="postText">4. Post Text (Edit before posting)</label>
+                <div id="genStatus" class="status" style="margin-bottom: 10px;"></div>
+                <textarea id="postText" rows="6" placeholder="Write your post here or generate one..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="imageFile">5. Image (Optional)</label>
+                <input type="file" id="imageFile" accept="image/*">
+                <div id="preview" class="preview"></div>
+            </div>
+
+            <button type="submit" id="submitBtn">Post to LinkedIn</button>
+        </form>
+
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        const form = document.getElementById('postForm');
+        const status = document.getElementById('status');
+        const submitBtn = document.getElementById('submitBtn');
+        const generateBtn = document.getElementById('generateBtn');
+        const genStatus = document.getElementById('genStatus');
+        const promptInput = document.getElementById('prompt');
+        const postTextInput = document.getElementById('postText');
+        const imageFile = document.getElementById('imageFile');
+        const preview = document.getElementById('preview');
+
+        // Generate Caption Logic
+        generateBtn.addEventListener('click', async function () {
+            const prompt = promptInput.value.trim();
+            if (!prompt) {
+                alert('Please enter a prompt first.');
+                return;
+            }
+
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+            genStatus.style.display = 'block';
+            genStatus.className = 'status loading'; // Assuming you have a loading style or just default
+            genStatus.innerHTML = 'Generating caption...';
+
+            try {
+                const formData = new FormData();
+                formData.append('prompt', prompt);
+                formData.append('platform', 'linkedin');
+
+                const response = await fetch('/generate-caption', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    postTextInput.value = data.full_caption;
+                    genStatus.className = 'status success';
+                    genStatus.innerHTML = 'Caption generated!';
+                    setTimeout(() => genStatus.style.display = 'none', 3000);
+                } else {
+                    genStatus.className = 'status error';
+                    genStatus.innerHTML = `Error: ${data.detail}`;
+                }
+            } catch (error) {
+                genStatus.className = 'status error';
+                genStatus.innerHTML = `Network Error: ${error.message}`;
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.textContent = '✨ Generate Caption';
+            }
+        });
+
+        // Image Preview
+        imageFile.addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    preview.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                preview.innerHTML = '';
+            }
+        });
+
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const memberUrn = document.getElementById('memberUrn').value.trim();
+            const text = postTextInput.value;
+            const file = imageFile.files[0];
+
+            if (!memberUrn) {
+                showStatus('Missing Member URN', 'error');
+                return;
+            }
+
+            if (!text) {
+                showStatus('Please provide post text (or generate it)', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('member_urn', memberUrn);
+            formData.append('text', text);
+            if (file) formData.append('file', file);
+
+            submitBtn.textContent = 'Posting...';
+            submitBtn.disabled = true;
+            status.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/platforms/linkedin/post', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showStatus(
+                        `<strong>Success!</strong><br>Post ID: ${data.post_id}<br>` +
+                        `<a href="${data.linkedin_post_url}" target="_blank">View on LinkedIn</a>`,
+                        'success'
+                    );
+                } else {
+                    showStatus(`Error: ${data.detail || 'Unknown error'}`, 'error');
+                }
+            } catch (err) {
+                showStatus(`Network Error: ${err.message}`, 'error');
+            } finally {
+                submitBtn.textContent = 'Post to LinkedIn';
+                submitBtn.disabled = false;
+            }
+        });
+
+        function showStatus(msg, type) {
+            status.innerHTML = msg;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>

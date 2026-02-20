@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instagram Auto Post - Upload Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px dashed #667eea;
+            border-radius: 10px;
+            background: #f8f9ff;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        input[type="file"]:hover {
+            border-color: #764ba2;
+            background: #f0f1ff;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e4e8;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+            transition: all 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #f0f1ff;
+            color: #667eea;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #e1e4ff;
+        }
+
+        .btn-secondary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .preview {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .preview img {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.loading {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .status a {
+            color: inherit;
+            font-weight: bold;
+            text-decoration: underline;
+        }
+
+        .loader {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .char-count {
+            text-align: right;
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .api-url {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 20px;
+            border: 1px solid #e1e4e8;
+        }
+
+        .api-url input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+
+        .file-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>📸 Instagram Auto Post</h1>
+        <p class="subtitle">Upload and post images directly to Instagram</p>
+
+        <div class="api-url">
+            <label style="margin-bottom: 5px; font-size: 12px; font-weight: 600;">API URL:</label>
+            <input type="text" id="apiUrl" value="http://localhost:8000" />
+        </div>
+
+        <form id="uploadForm">
+            <div class="form-group">
+                <label for="imageFile">📷 Select Image *</label>
+                <input type="file" id="imageFile" name="file" accept="image/jpeg,image/jpg,image/png" required>
+                <div class="file-info" id="fileInfo"></div>
+                <div id="preview" class="preview"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="prompt">💡 AI Prompt (Optional)</label>
+                <textarea id="prompt" name="prompt" rows="3"
+                    placeholder="Describe your image or what you want the caption to be about..."></textarea>
+                <button type="button" id="generateBtn" class="btn-secondary" style="margin-top: 10px; width: 100%;">
+                    ✨ Generate Caption with AI
+                </button>
+            </div>
+
+            <div class="form-group">
+                <label for="caption">✍️ Caption *</label>
+                <textarea id="caption" name="caption" rows="8" placeholder="Write your caption here... 
+
+Or generate one using the AI tool above! 🚀"></textarea>
+                <div class="char-count">
+                    <span id="charCount">0</span> / 2200 characters
+                </div>
+            </div>
+
+            <div id="genStatus" class="status" style="margin-bottom: 20px;"></div>
+
+            <div class="button-group">
+                <button type="submit" class="btn-primary" id="submitBtn">
+                    🚀 Post to Instagram
+                </button>
+                <button type="button" class="btn-secondary" id="asyncBtn">
+                    ⚡ Post Async
+                </button>
+            </div>
+        </form>
+
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        const apiUrlInput = document.getElementById('apiUrl');
+        const form = document.getElementById('uploadForm');
+        const imageFile = document.getElementById('imageFile');
+        const caption = document.getElementById('caption');
+        const prompt = document.getElementById('prompt');
+        const generateBtn = document.getElementById('generateBtn');
+        const genStatus = document.getElementById('genStatus');
+        const preview = document.getElementById('preview');
+        const status = document.getElementById('status');
+        const submitBtn = document.getElementById('submitBtn');
+        const asyncBtn = document.getElementById('asyncBtn');
+        const charCount = document.getElementById('charCount');
+        const fileInfo = document.getElementById('fileInfo');
+
+        // Preview image
+        imageFile.addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) {
+                // Show file info
+                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                fileInfo.textContent = `📁 ${file.name} (${sizeMB} MB)`;
+
+                // Show preview
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    preview.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                fileInfo.textContent = '';
+                preview.innerHTML = '';
+            }
+        });
+
+        // Generate Caption
+        generateBtn.addEventListener('click', async function () {
+            const promptText = prompt.value.trim();
+            if (!promptText) {
+                alert('Please enter a prompt first!');
+                return;
+            }
+
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<span class="loader"></span> Generating...';
+            genStatus.style.display = 'block';
+            genStatus.className = 'status loading';
+            genStatus.innerHTML = '✨ AI is writing your caption... This may take a minute.';
+
+            try {
+                const formData = new FormData();
+                formData.append('prompt', promptText);
+                formData.append('platform', 'instagram');
+
+                const response = await fetch('/generate-caption', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    caption.value = data.full_caption;
+                    // Trigger input event to update char count
+                    caption.dispatchEvent(new Event('input'));
+                    genStatus.className = 'status success';
+                    genStatus.innerHTML = '✅ Caption generated! You can edit it below.';
+                } else {
+                    genStatus.className = 'status error';
+                    genStatus.innerHTML = `❌ Error: ${data.detail || 'Failed to generate'}`;
+                }
+            } catch (error) {
+                genStatus.className = 'status error';
+                genStatus.innerHTML = `❌ Network Error: ${error.message}`;
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '✨ Generate Caption with AI';
+            }
+        });
+
+        // Character counter
+        caption.addEventListener('input', function () {
+            const length = this.value.length;
+            charCount.textContent = length;
+
+            if (length > 2200) {
+                charCount.style.color = 'red';
+                charCount.style.fontWeight = 'bold';
+            } else if (length > 2000) {
+                charCount.style.color = 'orange';
+                charCount.style.fontWeight = 'bold';
+            } else {
+                charCount.style.color = '#666';
+                charCount.style.fontWeight = 'normal';
+            }
+        });
+
+        // Show status message
+        function showStatus(message, type) {
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            status.innerHTML = message;
+
+            // Scroll to status
+            status.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        // Submit form (sync)
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+            await submitPost('/upload-post', submitBtn, 'Synchronous');
+        });
+
+        // Submit form (async)
+        asyncBtn.addEventListener('click', async function (e) {
+            e.preventDefault();
+            await submitPost('/upload-post-async', asyncBtn, 'Asynchronous');
+        });
+
+        async function submitPost(endpoint, button, mode) {
+            const file = imageFile.files[0];
+            const captionText = caption.value;
+
+            // Validation
+            if (!file) {
+                showStatus('❌ Please select an image', 'error');
+                return;
+            }
+
+            if (!captionText.trim()) {
+                showStatus('❌ Please enter a caption (or generate one!)', 'error');
+                return;
+            }
+
+            // Validate file size (10MB)
+            if (file.size > 10 * 1024 * 1024) {
+                showStatus('❌ File too large. Maximum size is 10MB', 'error');
+                return;
+            }
+
+            // Validate file type
+            const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+            if (!validTypes.includes(file.type)) {
+                showStatus('❌ Invalid file type. Only JPG and PNG are allowed', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('caption', captionText);
+            // No auto_caption flag sent; we treat the text in 'caption' as final
+
+            // Disable buttons and show loading
+            submitBtn.disabled = true;
+            asyncBtn.disabled = true;
+            const originalText = button.innerHTML;
+            button.innerHTML = '<span class="loader"></span> Uploading...';
+
+            const loadingMsg = mode === 'Asynchronous'
+                ? '<span class="loader"></span> Uploading image and creating post (will publish in background)...'
+                : '<span class="loader"></span> Uploading image and posting to Instagram...';
+            showStatus(loadingMsg, 'loading');
+
+            try {
+                const apiUrl = apiUrlInput.value.trim();
+                const response = await fetch(`${apiUrl}${endpoint}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    let message = '✅ <strong>Success!</strong><br><br>';
+
+                    if (data.instagram_post_url) {
+                        message += `🎉 <strong>Post published to Instagram!</strong><br>`;
+                        message += `<a href="${data.instagram_post_url}" target="_blank">View Post on Instagram →</a><br><br>`;
+                    } else if (mode === 'Asynchronous') {
+                        message += `📤 <strong>Post created!</strong><br>`;
+                        message += `Publishing in background... Check your Instagram in a few seconds.<br><br>`;
+                    }
+
+                    if (data.uploaded_image_url) {
+                        message += `📷 <a href="${data.uploaded_image_url}" target="_blank">View Uploaded Image →</a><br>`;
+                    }
+
+                    if (data.creation_id) {
+                        message += `<br><small>Creation ID: ${data.creation_id}</small>`;
+                    }
+
+                    showStatus(message, 'success');
+
+                    // Reset form after 3 seconds
+                    setTimeout(() => {
+                        form.reset();
+                        preview.innerHTML = '';
+                        fileInfo.textContent = '';
+                        charCount.textContent = '0';
+                    }, 3000);
+                } else {
+                    const errorDetail = data.detail || data.message || 'Unknown error';
+                    showStatus(`❌ <strong>Error:</strong> ${errorDetail}`, 'error');
+                }
+            } catch (error) {
+                showStatus(
+                    `❌ <strong>Network Error:</strong> ${error.message}<br><br>` +
+                    `Make sure the API server is running at <strong>${apiUrlInput.value}</strong>`,
+                    'error'
+                );
+            } finally {
+                submitBtn.disabled = false;
+                asyncBtn.disabled = false;
+                button.innerHTML = originalText;
+            }
+        }
+
+        // Save API URL to localStorage
+        apiUrlInput.addEventListener('change', function () {
+            localStorage.setItem('apiUrl', this.value);
+        });
+
+        // Load API URL from localStorage
+        const savedApiUrl = localStorage.getItem('apiUrl');
+        if (savedApiUrl) {
+            apiUrlInput.value = savedApiUrl;
+        }
+
+        // Test API connection on load
+        window.addEventListener('load', async function () {
+            try {
+                const apiUrl = apiUrlInput.value.trim();
+                const response = await fetch(`${apiUrl}/config-check`);
+                const data = await response.json();
+
+                if (data.ready) {
+                    console.log('✅ API is ready!', data);
+                } else {
+                    console.warn('⚠️ API configuration incomplete:', data.issues);
+                }
+            } catch (error) {
+                console.error('❌ Cannot connect to API:', error);
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media Auto-Post Dashboard</title>
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #0077b5 0%, #004182 100%);
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+            --text-color: #333;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .dashboard-container {
+            max-width: 900px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+            color: #2c3e50;
+        }
+
+        p.subtitle {
+            margin-bottom: 40px;
+            color: #7f8c8d;
+            font-size: 1.1rem;
+        }
+
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 40px 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border: 1px solid transparent;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            border-color: #eee;
+        }
+
+        .icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+
+        .card p {
+            color: #7f8c8d;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        /* Instagram Card Styles */
+        .card.instagram .icon {
+            background: -webkit-linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .card.instagram:hover {
+            border-bottom: 4px solid #cc2366;
+        }
+
+        /* LinkedIn Card Styles */
+        .card.linkedin .icon {
+            color: #0077b5;
+        }
+
+        .card.linkedin:hover {
+            border-bottom: 4px solid #0077b5;
+        }
+
+        footer {
+            margin-top: 50px;
+            color: #95a5a6;
+            font-size: 0.85rem;
+        }
+    </style>
+    <!-- Add FontAwesome for Icons (Optional, using text emoji for now to keep it simple) -->
+</head>
+
+<body>
+
+    <div class="dashboard-container">
+        <h1>📲 Social Media Auto-Post</h1>
+        <p class="subtitle">Manage and automate your posts from a single dashboard.</p>
+
+        <div class="cards-grid">
+            <!-- Instagram Card -->
+            <a href="/static/test_upload.html" class="card instagram">
+                <div class="icon">📸</div>
+                <h2>Instagram Post</h2>
+                <p>Upload photos, generate playful captions with Ollama, and post directly to your Instagram feed.</p>
+            </a>
+
+            <!-- LinkedIn Card -->
+            <a href="/static/test_linkedin.html" class="card linkedin">
+                <div class="icon">💼</div>
+                <h2>LinkedIn Post</h2>
+                <p>Share professional updates, articles, and images with your LinkedIn network using AI-generated
+                    content.</p>
+            </a>
+        </div>
+
+        <footer>
+            <p>Powered by FastAPI & Ollama 🦙</p>
+        </footer>
+    </div>
+
+</body>
+
+</html>
