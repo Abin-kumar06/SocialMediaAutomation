@@ -9,23 +9,73 @@ import os
 
 logger = logging.getLogger(__name__)
 
+import sqlite3
+import threading
+from pathlib import Path
+
 class LinkedInStore:
-    """In-memory store for LinkedIn accounts"""
-    def __init__(self):
-        self._accounts: Dict[str, LinkedInAccount] = {}
+    """Persistent SQLite store for LinkedIn accounts"""
+    def __init__(self, db_path: str = "accounts.db"):
+        self.db_path = db_path
         self._lock = threading.RLock()
+        self._init_db()
+
+    def _init_db(self):
+        with self._lock:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS linkedin_accounts (
+                        member_urn TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        access_token TEXT NOT NULL,
+                        email TEXT,
+                        status TEXT DEFAULT 'active'
+                    )
+                """)
+                conn.commit()
 
     def add_account(self, account: LinkedInAccount):
         with self._lock:
-            self._accounts[account.member_urn] = account
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
+                    INSERT OR REPLACE INTO linkedin_accounts 
+                    (member_urn, name, access_token, status) 
+                    VALUES (?, ?, ?, ?)
+                """, (account.member_urn, account.name, account.access_token, account.status))
+                conn.commit()
 
     def get_account(self, member_urn: str) -> Optional[LinkedInAccount]:
         with self._lock:
-            return self._accounts.get(member_urn)
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute(
+                    "SELECT member_urn, name, access_token, status FROM linkedin_accounts WHERE member_urn = ?", 
+                    (member_urn,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    return LinkedInAccount(
+                        user_id="default",
+                        member_urn=row[0],
+                        name=row[1],
+                        access_token=row[2],
+                        status=row[3]
+                    )
+                return None
 
     def get_all_accounts(self) -> List[LinkedInAccount]:
         with self._lock:
-            return list(self._accounts.values())
+            accounts = []
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("SELECT member_urn, name, access_token, status FROM linkedin_accounts")
+                for row in cursor.fetchall():
+                    accounts.append(LinkedInAccount(
+                        user_id="default",
+                        member_urn=row[0],
+                        name=row[1],
+                        access_token=row[2],
+                        status=row[3]
+                    ))
+            return accounts
 
 class LinkedInService:
     """Service to handle LinkedIn OAuth and posting"""

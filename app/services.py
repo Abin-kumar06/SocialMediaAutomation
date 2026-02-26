@@ -253,8 +253,42 @@ class ImageService:
                     detail=f"Failed to upload to Imgur: {str(e)}"
                 )
     
+    def upload_to_catbox(self, file_path: Path) -> str:
+        """Upload to Catbox.moe (reliable for Instagram)"""
+        url = "https://catbox.moe/user/api.php"
+        
+        try:
+            with open(file_path, "rb") as file:
+                files = {"fileToUpload": file}
+                data = {"reqtype": "fileupload"}
+                if settings.CATBOX_USER_HASH:
+                    data["userhash"] = settings.CATBOX_USER_HASH
+                
+                response = requests.post(url, data=data, files=files, timeout=30)
+                response.raise_for_status()
+                
+                direct_url = response.text.strip()
+                if direct_url.startswith("http"):
+                    return direct_url
+                else:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Catbox upload failed: {direct_url}"
+                    )
+        except requests.exceptions.RequestException as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to upload to Catbox: {str(e)}"
+            )
+
     def upload_to_cloud(self, file_path: Path) -> str:
-        """Upload to configured cloud service"""
+        """Upload to configured cloud service. Prioritizes Catbox as ImgBB is often blocked by Meta."""
+        # Try Catbox first as it's currently the most reliable for Instagram
+        try:
+            return self.upload_to_catbox(file_path)
+        except Exception as e:
+            print(f"⚠ Catbox upload failed, falling back: {e}")
+            
         if settings.IMGBB_API_KEY:
             return self.upload_to_imgbb(file_path)
         elif settings.IMGUR_CLIENT_ID:

@@ -412,6 +412,13 @@
                 <div id="instaPreviewCard" class="preview-card active">
                     <div class="preview-header">
                         <span style="color: #bc1888">📸 Instagram Preview</span>
+                        <div style="margin-left: auto;">
+                            <!-- For now, Instagram connection might be manual or guided -->
+                            <button id="addInstaAccount" class="btn btn-secondary"
+                                style="padding: 6px 12px; font-size: 0.75rem;">
+                                🔗 Connect
+                            </button>
+                        </div>
                     </div>
                     <textarea id="instaCaption" rows="6" placeholder="Instagram caption will appear here..."></textarea>
                     <div id="instaStatus" class="status-badge" style="margin-top: 10px;"></div>
@@ -421,30 +428,29 @@
                 <div id="linkedinPreviewCard" class="preview-card">
                     <div class="preview-header">
                         <span style="color: #0077b5">💼 LinkedIn Preview</span>
-                        <div style="margin-left: auto; display: flex; gap: 10px;">
-                            <a href="/api/platforms/linkedin/connect" target="_blank" class="btn btn-secondary"
-                                style="padding: 5px 10px; font-size: 0.7rem; text-decoration: none;">
-                                🔗 Connect
-                            </a>
-                            <button id="refreshLinkedIn" class="btn btn-secondary"
-                                style="padding: 5px 10px; font-size: 0.7rem;">
-                                🔄 Refresh
+                        <div style="margin-left: auto;">
+                            <button id="addLinkedinAccount" class="btn btn-secondary"
+                                style="padding: 6px 12px; font-size: 0.75rem;">
+                                ➕ Add Account
                             </button>
                         </div>
                     </div>
+
                     <div class="account-select" id="linkedinAccountSection">
-                        <label class="label" style="font-size: 0.8rem;">Post as:</label>
+                        <div
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <label class="label" style="font-size: 0.8rem; margin-bottom: 0;">Post to LinkedIn
+                                as:</label>
+                            <button id="refreshLinkedIn"
+                                style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size: 0.7rem;">
+                                🔄 Refresh List
+                            </button>
+                        </div>
                         <select id="linkedinAccounts">
                             <option value="">Loading accounts...</option>
                         </select>
-                        <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="manualUrnToggle" style="width: auto; cursor: pointer;">
-                            <label for="manualUrnToggle"
-                                style="font-size: 0.75rem; color: #94a3b8; cursor: pointer;">Manual URN Entry</label>
-                        </div>
-                        <input type="text" id="manualUrnInput" placeholder="urn:li:person:XXXX"
-                            style="display: none; margin-top: 10px; padding: 10px; font-size: 0.85rem; border-radius: 8px;">
                     </div>
+
                     <textarea id="linkedinCaption" rows="6"
                         placeholder="LinkedIn caption will appear here..."></textarea>
                     <div id="linkedinStatus" class="status-badge" style="margin-top: 10px;"></div>
@@ -465,14 +471,14 @@
         const linkedinPreviewCard = document.getElementById('linkedinPreviewCard');
         const generateBtn = document.getElementById('generateBtn');
         const postBtn = document.getElementById('postBtn');
+        const addLinkedinAccount = document.getElementById('addLinkedinAccount');
         const aiPrompt = document.getElementById('aiPrompt');
         const instaCaption = document.getElementById('instaCaption');
         const linkedinCaption = document.getElementById('linkedinCaption');
         const linkedinAccounts = document.getElementById('linkedinAccounts');
-        const manualUrnToggle = document.getElementById('manualUrnToggle');
-        const manualUrnInput = document.getElementById('manualUrnInput');
-        const refreshLinkedIn = document.getElementById('refreshLinkedIn');
         const mainStatus = document.getElementById('mainStatus');
+        const manualUrnToggle = { checked: false }; // Mock to prevent errors if referenced elsewhere
+        const manualUrnInput = { value: '' }; // Mock to prevent errors if referenced elsewhere
 
         // Platform Toggles
         checkInsta.addEventListener('change', () => {
@@ -486,12 +492,38 @@
             updatePostButtonState();
         });
 
-        manualUrnToggle.addEventListener('change', () => {
-            const isManual = manualUrnToggle.checked;
-            manualUrnInput.style.display = isManual ? 'block' : 'none';
-            linkedinAccounts.disabled = isManual;
-            localStorage.setItem('manualUrnEnabled', isManual);
+        addLinkedinAccount.addEventListener('click', () => {
+            window.open('/api/platforms/linkedin/connect', '_blank', 'width=600,height=600');
+            // Inform user to refresh after connecting
+            setTimeout(() => {
+                showStatus(document.getElementById('linkedinStatus'), '💡 Refresh the list after authorization is complete.', 'loading');
+            }, 1000);
         });
+
+        const addInstaAccount = document.getElementById('addInstaAccount');
+        addInstaAccount.addEventListener('click', async () => {
+            const token = prompt('Enter your short-lived Meta User Access Token:');
+            if (token) {
+                showStatus(document.getElementById('instaStatus'), '🔄 Exchanging token...', 'loading');
+                try {
+                    const formData = new FormData();
+                    formData.append('short_lived_token', token);
+                    const resp = await fetch('/auth/instagram/exchange-token', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    if (resp.ok) {
+                        showStatus(document.getElementById('instaStatus'), '✅ Instagram connected!', 'success');
+                    } else {
+                        const err = await resp.json();
+                        showStatus(document.getElementById('instaStatus'), `❌ Error: ${err.detail}`, 'error');
+                    }
+                } catch (e) {
+                    showStatus(document.getElementById('instaStatus'), '❌ Connection failed', 'error');
+                }
+            }
+        });
+
 
         // File Selection
         dropZone.addEventListener('click', () => fileInput.click());
@@ -555,9 +587,6 @@
             fetchLinkedInAccounts();
         });
 
-        manualUrnInput.addEventListener('input', () => {
-            localStorage.setItem('manualUrnValue', manualUrnInput.value.trim());
-        });
 
         // Generate Captions
         generateBtn.addEventListener('click', async () => {
@@ -644,18 +673,14 @@
                             showStatus(statusEl, `❌ Error: ${data.detail || 'Failed'}`, 'error');
                         }
                     } else if (platform === 'linkedin') {
-                        const urn = manualUrnToggle.checked ? manualUrnInput.value.trim() : linkedinAccounts.value;
+                        const urn = linkedinAccounts.value;
                         if (!urn) {
-                            showStatus(statusEl, '❌ No account/URN provided', 'error');
+                            showStatus(statusEl, '❌ No account selected', 'error');
                             continue;
                         }
 
-                        // Remember the last used account or manual URN
-                        if (manualUrnToggle.checked) {
-                            localStorage.setItem('manualUrnValue', urn);
-                        } else {
-                            localStorage.setItem('lastLinkedInUrn', urn);
-                        }
+                        // Remember the last used account
+                        localStorage.setItem('lastLinkedInUrn', urn);
 
                         const formData = new FormData();
                         formData.append('member_urn', urn);
@@ -700,15 +725,18 @@
 
         // Initialize
         window.addEventListener('load', () => {
-            // Load state
-            const isManual = localStorage.getItem('manualUrnEnabled') === 'true';
-            manualUrnToggle.checked = isManual;
-            manualUrnInput.style.display = isManual ? 'block' : 'none';
-            linkedinAccounts.disabled = isManual;
-            manualUrnInput.value = localStorage.getItem('manualUrnValue') || '';
-
             fetchLinkedInAccounts();
         });
+
+        // Listen for OAuth success from popups
+        window.addEventListener('message', (event) => {
+            if (event.data === 'platform_connected') {
+                fetchLinkedInAccounts();
+                showStatus(document.getElementById('linkedinStatus'), '✅ Account list updated!', 'success');
+            }
+        });
+
+        fetchLinkedInAccounts();
 
         // Drag and Drop
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {

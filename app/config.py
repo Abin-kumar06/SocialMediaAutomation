@@ -59,6 +59,9 @@ class Settings:
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
     
+    # Catbox.moe (Public image hosting)
+    CATBOX_USER_HASH = os.getenv("CATBOX_USER_HASH", "")
+    
     # File Upload
     UPLOAD_DIR = Path("./uploads")
     MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
@@ -93,7 +96,8 @@ class Settings:
             "instagram_account_configured": bool(self.INSTAGRAM_ACCOUNT_ID),
             "fb_app_credentials_configured": bool(self.FB_APP_ID and self.FB_APP_SECRET),
             "ollama_configured": bool(self.OLLAMA_BASE_URL),
-            "hosting_available": bool(self.IMGBB_API_KEY or self.IMGUR_CLIENT_ID),
+            "catbox_configured": True,  # Standard use doesn't require hash
+            "hosting_available": bool(self.IMGBB_API_KEY or self.IMGUR_CLIENT_ID or True),
             "linkedin_configured": bool(self.LINKEDIN_CLIENT_ID and self.LINKEDIN_CLIENT_SECRET and self.LINKEDIN_REDIRECT_URI),
             "linkedin_token_configured": bool(self.LINKEDIN_ACCESS_TOKEN or os.getenv("LINKEDIN_ACCESS_TOKEN")),
             "x_configured": bool(self.X_CLIENT_ID and self.X_CLIENT_SECRET and self.X_REDIRECT_URI),
