@@ -4,14 +4,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Social Media Auto-Post Dashboard</title>
+    <title>Unified Social Media Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --secondary-gradient: linear-gradient(135deg, #0077b5 0%, #004182 100%);
-            --bg-color: #f4f7f6;
-            --card-bg: #ffffff;
-            --text-color: #333;
+            --primary: #764ba2;
+            --secondary: #667eea;
+            --instagram: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+            --linkedin: #0077b5;
+            --bg-color: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text-color: #f8fafc;
+            --glass-border: rgba(255, 255, 255, 0.1);
         }
 
         * {
@@ -21,133 +25,709 @@
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Outfit', sans-serif;
             background-color: var(--bg-color);
+            background-image:
+                radial-gradient(at 0% 0%, rgba(102, 126, 234, 0.15) 0, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(118, 75, 162, 0.15) 0, transparent 50%);
             color: var(--text-color);
-            display: flex;
-            justify-content: center;
-            align-items: center;
             min-height: 100vh;
-            padding: 20px;
+            padding: 40px 20px;
         }
 
-        .dashboard-container {
-            max-width: 900px;
-            width: 100%;
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        header {
             text-align: center;
+            margin-bottom: 40px;
         }
 
         h1 {
+            font-size: 3rem;
+            font-weight: 700;
             margin-bottom: 10px;
-            font-size: 2.5rem;
-            color: #2c3e50;
-        }
-
-        p.subtitle {
-            margin-bottom: 40px;
-            color: #7f8c8d;
-            font-size: 1.1rem;
-        }
-
-        .cards-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
-        }
-
-        .card {
-            background: var(--card-bg);
-            border-radius: 15px;
-            padding: 40px 30px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            text-decoration: none;
-            color: inherit;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            border: 1px solid transparent;
-        }
-
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
-            border-color: #eee;
-        }
-
-        .icon {
-            font-size: 4rem;
-            margin-bottom: 20px;
-        }
-
-        .card h2 {
-            font-size: 1.5rem;
-            margin-bottom: 10px;
-        }
-
-        .card p {
-            color: #7f8c8d;
-            font-size: 0.95rem;
-            line-height: 1.5;
-        }
-
-        /* Instagram Card Styles */
-        .card.instagram .icon {
-            background: -webkit-linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
             -webkit-background-clip: text;
+            background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
-        .card.instagram:hover {
-            border-bottom: 4px solid #cc2366;
+        .subtitle {
+            color: #94a3b8;
+            font-size: 1.1rem;
         }
 
-        /* LinkedIn Card Styles */
-        .card.linkedin .icon {
-            color: #0077b5;
+        .glass-panel {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            margin-bottom: 30px;
         }
 
-        .card.linkedin:hover {
-            border-bottom: 4px solid #0077b5;
+        .grid-layout {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr;
+            gap: 30px;
         }
 
-        footer {
-            margin-top: 50px;
-            color: #95a5a6;
+        @media (max-width: 900px) {
+            .grid-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .label {
+            display: block;
+            margin-bottom: 12px;
+            font-weight: 600;
+            color: #e2e8f0;
+            font-size: 0.95rem;
+        }
+
+        .form-section {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* Platform Selection */
+        .platform-selector {
+            display: flex;
+            gap: 15px;
+        }
+
+        .platform-checkbox {
+            display: none;
+        }
+
+        .platform-label {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 12px;
+            border-radius: 12px;
+            border: 2px solid var(--glass-border);
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: rgba(15, 23, 42, 0.5);
+            font-weight: 600;
+        }
+
+        .platform-checkbox:checked+.platform-label.instagram {
+            border-color: #dc2743;
+            background: rgba(220, 39, 67, 0.1);
+            box-shadow: 0 0 15px rgba(220, 39, 67, 0.2);
+        }
+
+        .platform-checkbox:checked+.platform-label.linkedin {
+            border-color: var(--linkedin);
+            background: rgba(0, 119, 181, 0.1);
+            box-shadow: 0 0 15px rgba(0, 119, 181, 0.2);
+        }
+
+        /* Upload Styling */
+        .upload-area {
+            border: 2px dashed var(--glass-border);
+            border-radius: 16px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: rgba(15, 23, 42, 0.3);
+        }
+
+        .upload-area:hover {
+            border-color: var(--secondary);
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .upload-area i {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .preview-image-container {
+            margin-top: 15px;
+            border-radius: 12px;
+            overflow: hidden;
+            display: none;
+            position: relative;
+        }
+
+        .preview-image-container img {
+            width: 100%;
+            display: block;
+        }
+
+        /* Inputs */
+        textarea,
+        select {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 15px;
+            color: white;
+            font-family: inherit;
+            resize: none;
+            transition: all 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--secondary);
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 14px 28px;
+            border-radius: 12px;
+            border: none;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-family: inherit;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+            color: white;
+            box-shadow: 0 10px 25px -5px rgba(118, 75, 162, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 30px -10px rgba(118, 75, 162, 0.6);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+            border: 1px solid var(--glass-border);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        /* Post Preview Cards */
+        .previews-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .preview-card {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 18px;
+            padding: 20px;
+            border: 1px solid var(--glass-border);
+            display: none;
+        }
+
+        .preview-card.active {
+            display: block;
+            animation: slideIn 0.4s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .preview-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .preview-header span {
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .status-badge {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .status-success {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+        }
+
+        .status-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+
+        .status-loading {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+
+        .loader {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .account-select {
+            margin-bottom: 15px;
             font-size: 0.85rem;
         }
+
+        /* Modern Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-color);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
     </style>
-    <!-- Add FontAwesome for Icons (Optional, using text emoji for now to keep it simple) -->
 </head>
 
 <body>
+    <div class="container">
+        <header>
+            <h1>Post Everywhere.</h1>
+            <p class="subtitle">Unified social media management powered by AI</p>
+        </header>
 
-    <div class="dashboard-container">
-        <h1>📲 Social Media Auto-Post</h1>
-        <p class="subtitle">Manage and automate your posts from a single dashboard.</p>
+        <div class="grid-layout">
+            <!-- Left Column: Input -->
+            <div class="glass-panel">
+                <div class="form-section">
+                    <div>
+                        <label class="label">Select Platforms</label>
+                        <div class="platform-selector">
+                            <input type="checkbox" id="checkInsta" class="platform-checkbox" checked>
+                            <label for="checkInsta" class="platform-label instagram">
+                                <span>📸</span> Instagram
+                            </label>
 
-        <div class="cards-grid">
-            <!-- Instagram Card -->
-            <a href="/static/test_upload.html" class="card instagram">
-                <div class="icon">📸</div>
-                <h2>Instagram Post</h2>
-                <p>Upload photos, generate playful captions with Ollama, and post directly to your Instagram feed.</p>
-            </a>
+                            <input type="checkbox" id="checkLinkedin" class="platform-checkbox">
+                            <label for="checkLinkedin" class="platform-label linkedin">
+                                <span>💼</span> LinkedIn
+                            </label>
+                        </div>
+                    </div>
 
-            <!-- LinkedIn Card -->
-            <a href="/static/test_linkedin.html" class="card linkedin">
-                <div class="icon">💼</div>
-                <h2>LinkedIn Post</h2>
-                <p>Share professional updates, articles, and images with your LinkedIn network using AI-generated
-                    content.</p>
-            </a>
+                    <div>
+                        <label class="label">Media Content</label>
+                        <div class="upload-area" id="dropZone">
+                            <i>📤</i>
+                            <p>Drop image here or click to browse</p>
+                            <span id="fileNameDisplay"
+                                style="display: block; margin-top: 10px; font-size: 0.8rem; color: #94a3b8;"></span>
+                            <input type="file" id="fileInput" accept="image/jpeg,image/png">
+                        </div>
+                        <div class="preview-image-container" id="previewContainer">
+                            <img id="mainPreview" src="" alt="Preview">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="label" for="aiPrompt">AI Generation Prompt</label>
+                        <textarea id="aiPrompt" rows="4"
+                            placeholder="Describe what you want to post about... e.g., 'A professional update about our new AI feature launching today'"></textarea>
+                    </div>
+
+                    <button id="generateBtn" class="btn btn-secondary" style="width: 100%;">
+                        <span>✨</span> Generate Captions for All
+                    </button>
+
+                    <button id="postBtn" class="btn btn-primary" style="width: 100%;" disabled>
+                        <span>🚀</span> Post to Selected Platforms
+                    </button>
+
+                    <div id="mainStatus" class="status-badge"></div>
+                </div>
+            </div>
+
+            <!-- Right Column: Previews -->
+            <div class="previews-container">
+                <!-- Instagram Preview -->
+                <div id="instaPreviewCard" class="preview-card active">
+                    <div class="preview-header">
+                        <span style="color: #bc1888">📸 Instagram Preview</span>
+                    </div>
+                    <textarea id="instaCaption" rows="6" placeholder="Instagram caption will appear here..."></textarea>
+                    <div id="instaStatus" class="status-badge" style="margin-top: 10px;"></div>
+                </div>
+
+                <!-- LinkedIn Preview -->
+                <div id="linkedinPreviewCard" class="preview-card">
+                    <div class="preview-header">
+                        <span style="color: #0077b5">💼 LinkedIn Preview</span>
+                        <div style="margin-left: auto; display: flex; gap: 10px;">
+                            <a href="/api/platforms/linkedin/connect" target="_blank" class="btn btn-secondary"
+                                style="padding: 5px 10px; font-size: 0.7rem; text-decoration: none;">
+                                🔗 Connect
+                            </a>
+                            <button id="refreshLinkedIn" class="btn btn-secondary"
+                                style="padding: 5px 10px; font-size: 0.7rem;">
+                                🔄 Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="account-select" id="linkedinAccountSection">
+                        <label class="label" style="font-size: 0.8rem;">Post as:</label>
+                        <select id="linkedinAccounts">
+                            <option value="">Loading accounts...</option>
+                        </select>
+                        <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="manualUrnToggle" style="width: auto; cursor: pointer;">
+                            <label for="manualUrnToggle"
+                                style="font-size: 0.75rem; color: #94a3b8; cursor: pointer;">Manual URN Entry</label>
+                        </div>
+                        <input type="text" id="manualUrnInput" placeholder="urn:li:person:XXXX"
+                            style="display: none; margin-top: 10px; padding: 10px; font-size: 0.85rem; border-radius: 8px;">
+                    </div>
+                    <textarea id="linkedinCaption" rows="6"
+                        placeholder="LinkedIn caption will appear here..."></textarea>
+                    <div id="linkedinStatus" class="status-badge" style="margin-top: 10px;"></div>
+                </div>
+            </div>
         </div>
-
-        <footer>
-            <p>Powered by FastAPI & Ollama 🦙</p>
-        </footer>
     </div>
 
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const dropZone = document.getElementById('dropZone');
+        const mainPreview = document.getElementById('mainPreview');
+        const previewContainer = document.getElementById('previewContainer');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const checkInsta = document.getElementById('checkInsta');
+        const checkLinkedin = document.getElementById('checkLinkedin');
+        const instaPreviewCard = document.getElementById('instaPreviewCard');
+        const linkedinPreviewCard = document.getElementById('linkedinPreviewCard');
+        const generateBtn = document.getElementById('generateBtn');
+        const postBtn = document.getElementById('postBtn');
+        const aiPrompt = document.getElementById('aiPrompt');
+        const instaCaption = document.getElementById('instaCaption');
+        const linkedinCaption = document.getElementById('linkedinCaption');
+        const linkedinAccounts = document.getElementById('linkedinAccounts');
+        const manualUrnToggle = document.getElementById('manualUrnToggle');
+        const manualUrnInput = document.getElementById('manualUrnInput');
+        const refreshLinkedIn = document.getElementById('refreshLinkedIn');
+        const mainStatus = document.getElementById('mainStatus');
+
+        // Platform Toggles
+        checkInsta.addEventListener('change', () => {
+            instaPreviewCard.classList.toggle('active', checkInsta.checked);
+            updatePostButtonState();
+        });
+
+        checkLinkedin.addEventListener('change', () => {
+            linkedinPreviewCard.classList.toggle('active', checkLinkedin.checked);
+            if (checkLinkedin.checked) fetchLinkedInAccounts();
+            updatePostButtonState();
+        });
+
+        manualUrnToggle.addEventListener('change', () => {
+            const isManual = manualUrnToggle.checked;
+            manualUrnInput.style.display = isManual ? 'block' : 'none';
+            linkedinAccounts.disabled = isManual;
+            localStorage.setItem('manualUrnEnabled', isManual);
+        });
+
+        // File Selection
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', handleFile);
+
+        function handleFile(e) {
+            const file = e.target.files[0] || e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                fileNameDisplay.textContent = file.name;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    mainPreview.src = e.target.result;
+                    previewContainer.style.display = 'block';
+                    updatePostButtonState();
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function updatePostButtonState() {
+            const hasFile = fileInput.files.length > 0;
+            const anyPlatformSelected = checkInsta.checked || checkLinkedin.checked;
+            postBtn.disabled = !(hasFile && anyPlatformSelected);
+        }
+
+        // Fetch LinkedIn Accounts
+        async function fetchLinkedInAccounts() {
+            try {
+                const response = await fetch('/api/platforms/linkedin/accounts');
+                const accounts = await response.json();
+
+                linkedinAccounts.innerHTML = '';
+                if (accounts && accounts.length > 0) {
+                    const savedUrn = localStorage.getItem('lastLinkedInUrn');
+                    accounts.forEach(acc => {
+                        const opt = document.createElement('option');
+                        opt.value = acc.member_urn;
+                        opt.textContent = acc.name;
+                        if (acc.member_urn === savedUrn) opt.selected = true;
+                        linkedinAccounts.appendChild(opt);
+                    });
+                } else {
+                    const opt = document.createElement('option');
+                    opt.value = "";
+                    opt.textContent = "No accounts connected";
+                    linkedinAccounts.appendChild(opt);
+                }
+            } catch (err) {
+                linkedinAccounts.innerHTML = '<option value="">Failed to load accounts</option>';
+            }
+        }
+
+        linkedinAccounts.addEventListener('change', () => {
+            if (linkedinAccounts.value) {
+                localStorage.setItem('lastLinkedInUrn', linkedinAccounts.value);
+            }
+        });
+
+        refreshLinkedIn.addEventListener('click', () => {
+            fetchLinkedInAccounts();
+        });
+
+        manualUrnInput.addEventListener('input', () => {
+            localStorage.setItem('manualUrnValue', manualUrnInput.value.trim());
+        });
+
+        // Generate Captions
+        generateBtn.addEventListener('click', async () => {
+            const prompt = aiPrompt.value.trim();
+            if (!prompt) {
+                showStatus(mainStatus, 'Please enter a prompt first', 'error');
+                return;
+            }
+
+            const platforms = [];
+            if (checkInsta.checked) platforms.push('instagram');
+            if (checkLinkedin.checked) platforms.push('linkedin');
+
+            if (platforms.length === 0) {
+                showStatus(mainStatus, 'Select at least one platform', 'error');
+                return;
+            }
+
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<div class="loader"></div> Generating...';
+            showStatus(mainStatus, '✨ AI is crafting your captions...', 'loading');
+
+            try {
+                // We'll call for each platform sequentially for now to keep implementation simple but robust
+                for (const platform of platforms) {
+                    const formData = new FormData();
+                    formData.append('prompt', prompt);
+                    formData.append('platform', platform);
+
+                    const resp = await fetch('/generate-caption', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await resp.json();
+
+                    if (platform === 'instagram') {
+                        instaCaption.value = data.full_caption;
+                    } else {
+                        linkedinCaption.value = data.full_caption;
+                    }
+                }
+                showStatus(mainStatus, '✅ Captions ready! Edit them in the previews below.', 'success');
+            } catch (err) {
+                showStatus(mainStatus, '❌ Failed to generate captions. Try again.', 'error');
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '<span>✨</span> Generate Captions for All';
+            }
+        });
+
+        // Combined Post Logic
+        postBtn.addEventListener('click', async () => {
+            const platforms = [];
+            if (checkInsta.checked) platforms.push('instagram');
+            if (checkLinkedin.checked) platforms.push('linkedin');
+
+            postBtn.disabled = true;
+            postBtn.innerHTML = '<div class="loader"></div> Posting...';
+            showStatus(mainStatus, '🚀 Posting to selected platforms...', 'loading');
+
+            let successCount = 0;
+            const file = fileInput.files[0];
+
+            for (const platform of platforms) {
+                const statusEl = platform === 'instagram' ? document.getElementById('instaStatus') : document.getElementById('linkedinStatus');
+                showStatus(statusEl, 'Posting...', 'loading');
+
+                try {
+                    if (platform === 'instagram') {
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        formData.append('caption', instaCaption.value);
+
+                        const resp = await fetch('/upload-post', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await resp.json();
+
+                        if (resp.ok && data.success) {
+                            showStatus(statusEl, '✅ Published!', 'success');
+                            successCount++;
+                        } else {
+                            showStatus(statusEl, `❌ Error: ${data.detail || 'Failed'}`, 'error');
+                        }
+                    } else if (platform === 'linkedin') {
+                        const urn = manualUrnToggle.checked ? manualUrnInput.value.trim() : linkedinAccounts.value;
+                        if (!urn) {
+                            showStatus(statusEl, '❌ No account/URN provided', 'error');
+                            continue;
+                        }
+
+                        // Remember the last used account or manual URN
+                        if (manualUrnToggle.checked) {
+                            localStorage.setItem('manualUrnValue', urn);
+                        } else {
+                            localStorage.setItem('lastLinkedInUrn', urn);
+                        }
+
+                        const formData = new FormData();
+                        formData.append('member_urn', urn);
+                        formData.append('text', linkedinCaption.value);
+                        formData.append('file', file);
+
+                        const resp = await fetch('/api/platforms/linkedin/post', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await resp.json();
+
+                        if (resp.ok) {
+                            showStatus(statusEl, '✅ Published!', 'success');
+                            successCount++;
+                        } else {
+                            showStatus(statusEl, `❌ Error: ${data.detail || 'Failed'}`, 'error');
+                        }
+                    }
+                } catch (err) {
+                    showStatus(statusEl, '❌ Network Error', 'error');
+                }
+            }
+
+            if (successCount === platforms.length) {
+                showStatus(mainStatus, `🎉 Successfully posted to all ${successCount} platforms!`, 'success');
+            } else if (successCount > 0) {
+                showStatus(mainStatus, `⚠️ Posted to ${successCount} of ${platforms.length} platforms. Check individual statuses.`, 'error');
+            } else {
+                showStatus(mainStatus, '❌ Failed to post. Check individual errors.', 'error');
+            }
+
+            postBtn.disabled = false;
+            postBtn.innerHTML = '<span>🚀</span> Post to Selected Platforms';
+        });
+
+        function showStatus(el, msg, type) {
+            el.textContent = msg;
+            el.className = `status-badge status-${type}`;
+            el.style.display = 'block';
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            // Load state
+            const isManual = localStorage.getItem('manualUrnEnabled') === 'true';
+            manualUrnToggle.checked = isManual;
+            manualUrnInput.style.display = isManual ? 'block' : 'none';
+            linkedinAccounts.disabled = isManual;
+            manualUrnInput.value = localStorage.getItem('manualUrnValue') || '';
+
+            fetchLinkedInAccounts();
+        });
+
+        // Drag and Drop
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, e => {
+                e.preventDefault();
+                e.stopPropagation();
+            }, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.style.borderColor = 'var(--secondary)', false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.style.borderColor = 'var(--glass-border)', false);
+        });
+
+        dropZone.addEventListener('drop', handleFile);
+    </script>
 </body>
 
 </html>

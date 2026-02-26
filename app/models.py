@@ -45,6 +45,17 @@ class LinkedInAccount(BaseModel):
     status: str = "active"
 
 
+class XAccount(BaseModel):
+    """Storage for a connected X (Twitter) account"""
+    user_id: str
+    x_user_id: str
+    username: str
+    access_token: str
+    refresh_token: Optional[str] = None
+    expires_at: float  # UTC timestamp
+    status: str = "active"
+
+
 class LinkedInPostResponse(BaseModel):
     """Response model for LinkedIn post"""
     success: bool

@@ -72,6 +72,12 @@ class Settings:
     LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI", "http://localhost:8000/api/platforms/linkedin/callback")
     LINKEDIN_SCOPES = "w_member_social,openid,profile,email"
     
+    # X (Twitter) API
+    X_CLIENT_ID = os.getenv("X_CLIENT_ID", "")
+    X_CLIENT_SECRET = os.getenv("X_CLIENT_SECRET", "")
+    X_REDIRECT_URI = os.getenv("X_REDIRECT_URI", "http://localhost:8000/api/platforms/x/callback")
+    X_SCOPES = os.getenv("X_SCOPES", "tweet.read tweet.write users.read offline.access")
+    
     # Server
     HOST = os.getenv("HOST", "0.0.0.0")
     PORT = int(os.getenv("PORT", "8000"))
@@ -90,6 +96,7 @@ class Settings:
             "hosting_available": bool(self.IMGBB_API_KEY or self.IMGUR_CLIENT_ID),
             "linkedin_configured": bool(self.LINKEDIN_CLIENT_ID and self.LINKEDIN_CLIENT_SECRET and self.LINKEDIN_REDIRECT_URI),
             "linkedin_token_configured": bool(self.LINKEDIN_ACCESS_TOKEN or os.getenv("LINKEDIN_ACCESS_TOKEN")),
+            "x_configured": bool(self.X_CLIENT_ID and self.X_CLIENT_SECRET and self.X_REDIRECT_URI),
         }
 
 

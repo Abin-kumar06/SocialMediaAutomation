@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 from app.models import (
     InstagramPostResponse, HealthCheck, InstagramMultiPostResponse,
-    LinkedInPostResponse, LinkedInAccount,
+    LinkedInPostResponse, LinkedInAccount, XAccount,
     ScheduledPostResponse, ScheduledJobInfo, ScheduledJobsListResponse
 )
 from app.config import settings
@@ -17,6 +17,8 @@ from app.services.ollama_caption_service import OllamaCaptionService
 from app.services.linkedin_service import LinkedInService
 import app.services.scheduler_service as scheduler_svc
 from app.services.instagram_token_service import InstagramTokenService, InstagramReauthRequired
+from app.services.x_oauth_service import x_oauth_service
+from app.services.x_client import x_client
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import asyncio
@@ -167,6 +169,100 @@ async def linkedin_callback(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LinkedIn Connection Error: {str(e)}")
+
+
+# X (Twitter) Platform Routes
+
+@app.get("/api/platforms/x/connect")
+async def x_connect():
+    """Redirect to X OAuth 2.0 with PKCE"""
+    return RedirectResponse(x_oauth_service.get_authorization_url())
+
+
+@app.get("/api/platforms/x/callback")
+async def x_callback(
+    code: str = None,
+    state: str = None,
+    error: str = None
+):
+    """Handle X OAuth 2.0 callback"""
+    if error:
+        raise HTTPException(status_code=400, detail=f"X OAuth Error: {error}")
+    
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="Missing code or state")
+
+    try:
+        # 1. Exchange code for tokens
+        tokens = await x_oauth_service.exchange_code(code, state)
+        
+        # 2. Fetch X user profile
+        x_user = await x_client.get_me(tokens["access_token"])
+        
+        # 3. Store X Account
+        expires_in = tokens.get("expires_in", 7200)
+        expires_at = time.time() + expires_in
+        
+        account = XAccount(
+            user_id="default",
+            x_user_id=x_user["id"],
+            username=x_user["username"],
+            access_token=tokens["access_token"],
+            refresh_token=tokens.get("refresh_token"),
+            expires_at=expires_at
+        )
+        
+        # Store X Account
+        x_client.store.add_account(account)
+        
+        return {
+            "success": True,
+            "message": f"Connected to X as @{account.username}",
+            "account": account.dict(exclude={"access_token", "refresh_token"})
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"X Connection Error: {str(e)}")
+
+
+@app.get("/api/platforms/x/accounts")
+async def list_x_accounts():
+    """List all connected X accounts (hiding sensitive tokens)"""
+    accounts = x_client.store.get_all_accounts()
+    return [a.dict(exclude={"access_token", "refresh_token"}) for a in accounts]
+
+
+@app.post("/api/platforms/x/post")
+async def x_post(
+    x_user_id: str = Form(..., description="The X User ID to post from"),
+    text: str = Form(None),
+    auto_caption: bool = Form(False),
+    prompt: str = Form(None)
+):
+    """Post a tweet to X"""
+    if not text and not auto_caption:
+        raise HTTPException(status_code=400, detail="Provide either text or enable auto_caption")
+    
+    account = x_client.store.get_account(x_user_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="X account not found. Please connect first.")
+
+    final_text = text
+    if auto_caption:
+        if not prompt:
+            raise HTTPException(status_code=400, detail="Prompt required for auto_caption")
+        generated = ollama_service.generate_caption(platform="x", topic=prompt)
+        final_text = generated.get("full_caption")
+
+    try:
+        tweet = await x_client.post_tweet(account.access_token, final_text)
+        return {
+            "success": True,
+            "tweet_id": tweet.get("id"),
+            "text": tweet.get("text"),
+            "message": "Tweet published successfully!"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/platforms/linkedin/accounts", response_model=List[LinkedInAccount])
