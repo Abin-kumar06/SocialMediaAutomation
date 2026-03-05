@@ -32,14 +32,15 @@ class XOAuthService:
         """Generate a random state string"""
         return base64.urlsafe_b64encode(os.urandom(16)).decode('utf-8').rstrip('=')
 
-    def get_authorization_url(self) -> str:
-        """Generate the X OAuth 2.0 authorization URL"""
+    def get_authorization_url(self, user_id: int) -> str:
+        """Generate the X OAuth 2.0 authorization URL and link to user_id"""
         state = self.generate_state()
         code_verifier, code_challenge = self.generate_pkce()
         
         # Store for later validation
         _oauth_sessions[state] = {
             "code_verifier": code_verifier,
+            "user_id": user_id,
             "expires_at": time.time() + 600 # 10 minutes expiry
         }
         
@@ -56,8 +57,8 @@ class XOAuthService:
         query_string = "&".join([f"{k}={urllib.parse.quote(v)}" for k, v in params.items()])
         return f"https://twitter.com/i/oauth2/authorize?{query_string}"
 
-    async def exchange_code(self, code: str, state: str) -> Dict:
-        """Exchange authorization code for access tokens"""
+    async def exchange_code(self, code: str, state: str) -> Tuple[Dict, int]:
+        """Exchange authorization code for access tokens and return user_id"""
         session = _oauth_sessions.pop(state, None)
         if not session:
             raise ValueError("Invalid or expired state")
@@ -66,6 +67,7 @@ class XOAuthService:
             raise ValueError("OAuth session expired")
 
         code_verifier = session["code_verifier"]
+        user_id = session["user_id"]
         
         url = "https://api.twitter.com/2/oauth2/token"
         data = {
@@ -77,14 +79,13 @@ class XOAuthService:
         }
         
         # Twitter OAuth 2.0 with Confidential Client (needs Basic Auth or credentials in body)
-        # Using Client Credentials in body with Basic Auth is common for X
         auth = httpx.BasicAuth(settings.X_CLIENT_ID, settings.X_CLIENT_SECRET)
         
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(url, data=data, auth=auth)
                 response.raise_for_status()
-                return response.json()
+                return response.json(), user_id
             except httpx.HTTPStatusError as e:
                 logger.error(f"X Token Exchange Error: {e.response.text}")
                 raise Exception(f"Failed to exchange X code: {e.response.text}")

@@ -1,85 +1,44 @@
 import httpx
 import logging
 import threading
-import json
-import os
-from pathlib import Path
 from typing import Dict, Optional, List
 from app.models import XAccount
+from app.database import db
 
 logger = logging.getLogger(__name__)
 
 class XStore:
-    """Persistent JSON store for X accounts"""
-    def __init__(self, storage_path: Optional[str] = None):
-        if storage_path:
-            self.storage_path = Path(storage_path)
-        else:
-            # Absolute path to the app directory
-            app_dir = Path(__file__).resolve().parent.parent
-            self.storage_path = app_dir / "x_accounts.json"
-            
-        # Ensure parent directory exists
-        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"DEBUG: X storage path: {self.storage_path.absolute()}")
-        
-        self._accounts: Dict[str, XAccount] = {}
-        self._lock = threading.RLock()
-        self._load()
-
-    def _load(self):
-        """Load accounts from JSON file"""
-        if self.storage_path.exists():
-            try:
-                with open(self.storage_path, "r") as f:
-                    data = json.load(f)
-                    for x_id, acc_data in data.items():
-                        self._accounts[str(x_id)] = XAccount(**acc_data)
-                logger.info(f"Loaded {len(self._accounts)} accounts from {self.storage_path}")
-            except Exception as e:
-                logger.error(f"Failed to load X accounts: {e}")
-
-    def _save(self):
-        """Save accounts to JSON file"""
-        try:
-            with open(self.storage_path, "w") as f:
-                data = {x_id: acc.dict() for x_id, acc in self._accounts.items()}
-                json.dump(data, f, indent=2)
-            logger.info(f"Saved {len(self._accounts)} accounts to {self.storage_path}")
-        except Exception as e:
-            logger.error(f"Failed to save X accounts: {e}")
+    """Persistent SQLite store for X accounts"""
+    def __init__(self):
+        # DB handled by app/database.py
+        pass
 
     def add_account(self, account: XAccount):
-        with self._lock:
-            x_id = str(account.x_user_id)
-            logger.info(f"Storing X account for user {x_id} (@{account.username})")
-            self._accounts[x_id] = account
-            self._save()
+        logger.info(f"Storing X account for user {account.x_user_id} (@{account.username})")
+        with db.get_connection() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO x_accounts 
+                (x_user_id, user_id, username, access_token, refresh_token, expires_at, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (str(account.x_user_id), account.user_id, account.username, 
+                  account.access_token, account.refresh_token, account.expires_at, account.status))
+            conn.commit()
 
-    def get_account(self, x_user_id: str) -> Optional[XAccount]:
-        with self._lock:
-            search_id = str(x_user_id).strip()
-            account = self._accounts.get(search_id)
-            
-            if not account:
-                # Truncation check: See if any stored ID starts with the first 15 digits
-                # Twitter IDs are usually 19 digits. Truncation often zeros out the last few.
-                if len(search_id) >= 15:
-                    prefix = search_id[:15]
-                    for stored_id, acc in self._accounts.items():
-                        if stored_id.startswith(prefix):
-                            logger.warning(f"Likely ID truncation detected! Input: {search_id}, Stored: {stored_id}")
-                            return acc
+    def get_account(self, x_user_id: str, user_id: int) -> Optional[XAccount]:
+        with db.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM x_accounts WHERE x_user_id = ? AND user_id = ?", 
+                (str(x_user_id), user_id)
+            )
+            row = cursor.fetchone()
+            if row:
+                return XAccount(**dict(row))
+            return None
 
-            if account:
-                logger.info(f"Found X account: {search_id}")
-            else:
-                logger.warning(f"X account NOT found: '{search_id}'. Stored IDs: {list(self._accounts.keys())}")
-            return account
-
-    def get_all_accounts(self) -> List[XAccount]:
-        with self._lock:
-            return list(self._accounts.values())
+    def get_all_accounts(self, user_id: int) -> List[XAccount]:
+        with db.get_connection() as conn:
+            cursor = conn.execute("SELECT * FROM x_accounts WHERE user_id = ?", (user_id,))
+            return [XAccount(**dict(row)) for row in cursor.fetchall()]
 
 class XClient:
     def __init__(self, store: Optional[XStore] = None):
@@ -100,23 +59,59 @@ class XClient:
             try:
                 response = await client.get(url, headers=headers, params=params)
                 response.raise_for_status()
-                # X API v2 returns data wrapped in a 'data' object
                 return response.json().get("data", {})
             except httpx.HTTPStatusError as e:
                 logger.error(f"X API Error (users/me): {e.response.text}")
                 raise Exception(f"Failed to fetch X user profile: {e.response.text}")
 
-    async def post_tweet(self, access_token: str, text: str, media_ids: Optional[list] = None) -> Dict:
+    async def upload_media(self, access_token: str, file_path: str) -> str:
+        """
+        Upload media to X using API v1.1 (required for v2 tweets)
+        Returns the media_id as a string.
+        """
+        url = "https://upload.twitter.com/1.1/media/upload.json"
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+        
+        # Determine media type
+        from pathlib import Path
+        import mimetypes
+        path = Path(file_path)
+        mime_type, _ = mimetypes.guess_type(file_path)
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                with open(file_path, "rb") as f:
+                    files = {"media": (path.name, f, mime_type or "image/jpeg")}
+                    response = await client.post(url, headers=headers, files=files)
+                    
+                response.raise_for_status()
+                return response.json().get("media_id_string")
+            except httpx.HTTPStatusError as e:
+                logger.error(f"X Media Upload Error: {e.response.text}")
+                raise Exception(f"Failed to upload media to X: {e.response.text}")
+            except Exception as e:
+                logger.error(f"X Media Upload Error: {str(e)}")
+                raise
+
+    async def post_tweet(self, access_token: str, text: Optional[str] = None, media_ids: Optional[List[str]] = None) -> Dict:
         """Post a tweet using X API v2"""
         url = f"{self.base_url}/tweets"
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
-        payload = {"text": text}
+        
+        payload = {}
+        if text:
+            payload["text"] = text
         if media_ids:
             payload["media"] = {"media_ids": media_ids}
             
+        if not payload:
+            raise ValueError("Tweet must have either text or media")
+
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(url, headers=headers, json=payload)
@@ -125,5 +120,6 @@ class XClient:
             except httpx.HTTPStatusError as e:
                 logger.error(f"X API Error (post tweet): {e.response.text}")
                 raise Exception(f"Failed to post tweet: {e.response.text}")
+
 
 x_client = XClient()

@@ -1,7 +1,7 @@
 """
 Pydantic models for request/response validation
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 
 
@@ -38,7 +38,7 @@ class InstagramMultiPostResponse(BaseModel):
 
 class LinkedInAccount(BaseModel):
     """Storage for a connected LinkedIn member account"""
-    user_id: str
+    user_id: int
     member_urn: str
     access_token: str
     name: str
@@ -47,7 +47,7 @@ class LinkedInAccount(BaseModel):
 
 class XAccount(BaseModel):
     """Storage for a connected X (Twitter) account"""
-    user_id: str
+    user_id: int
     x_user_id: str
     username: str
     access_token: str
@@ -63,9 +63,6 @@ class LinkedInPostResponse(BaseModel):
     message: str
     linkedin_post_url: Optional[str] = None
     uploaded_image_url: Optional[str] = None
-    caption: Optional[str] = None
-
-
     caption: Optional[str] = None
 
 
@@ -92,3 +89,25 @@ class ScheduledJobsListResponse(BaseModel):
     """List of all scheduled jobs"""
     jobs: List[ScheduledJobInfo]
     total: int
+
+class User(BaseModel):
+    id: Optional[int] = None
+    email: EmailStr
+    full_name: str
+    password: Optional[str] = None # min_length? max_length? 
+    # Bcrypt limit is 72 bytes, so we should ideally warn users or truncate.
+    # We truncate in AuthService, but let's add a reasonable max_length here.
+
+class UserInDB(User):
+    hashed_password: str
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None

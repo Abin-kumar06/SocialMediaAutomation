@@ -9,9 +9,13 @@ import os
 
 logger = logging.getLogger(__name__)
 
-import sqlite3
-import threading
-from pathlib import Path
+from app.database import db
+import time
+import base64
+
+# Temporary in-memory storage for LinkedIn state
+# state -> {user_id: int, expires_at: float}
+_linkedin_sessions: Dict[str, Dict[str, Any]] = {}
 
 class LinkedInStore:
     """Persistent SQLite store for LinkedIn accounts"""
@@ -21,61 +25,42 @@ class LinkedInStore:
         self._init_db()
 
     def _init_db(self):
-        with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS linkedin_accounts (
-                        member_urn TEXT PRIMARY KEY,
-                        name TEXT NOT NULL,
-                        access_token TEXT NOT NULL,
-                        email TEXT,
-                        status TEXT DEFAULT 'active'
-                    )
-                """)
-                conn.commit()
+        # Already handled by app/database.py
+        pass
 
     def add_account(self, account: LinkedInAccount):
-        with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute("""
-                    INSERT OR REPLACE INTO linkedin_accounts 
-                    (member_urn, name, access_token, status) 
-                    VALUES (?, ?, ?, ?)
-                """, (account.member_urn, account.name, account.access_token, account.status))
-                conn.commit()
+        with db.get_connection() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO linkedin_accounts 
+                (member_urn, user_id, name, access_token, status) 
+                VALUES (?, ?, ?, ?, ?)
+            """, (account.member_urn, account.user_id, account.name, account.access_token, account.status))
+            conn.commit()
 
-    def get_account(self, member_urn: str) -> Optional[LinkedInAccount]:
-        with self._lock:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.execute(
-                    "SELECT member_urn, name, access_token, status FROM linkedin_accounts WHERE member_urn = ?", 
-                    (member_urn,)
+    def get_account(self, member_urn: str, user_id: int) -> Optional[LinkedInAccount]:
+        with db.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT member_urn, user_id, name, access_token, status FROM linkedin_accounts WHERE member_urn = ? AND user_id = ?", 
+                (member_urn, user_id)
+            )
+            row = cursor.fetchone()
+            if row:
+                return LinkedInAccount(
+                    user_id=row['user_id'],
+                    member_urn=row['member_urn'],
+                    name=row['name'],
+                    access_token=row['access_token'],
+                    status=row['status']
                 )
-                row = cursor.fetchone()
-                if row:
-                    return LinkedInAccount(
-                        user_id="default",
-                        member_urn=row[0],
-                        name=row[1],
-                        access_token=row[2],
-                        status=row[3]
-                    )
-                return None
+            return None
 
-    def get_all_accounts(self) -> List[LinkedInAccount]:
-        with self._lock:
-            accounts = []
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.execute("SELECT member_urn, name, access_token, status FROM linkedin_accounts")
-                for row in cursor.fetchall():
-                    accounts.append(LinkedInAccount(
-                        user_id="default",
-                        member_urn=row[0],
-                        name=row[1],
-                        access_token=row[2],
-                        status=row[3]
-                    ))
-            return accounts
+    def get_all_accounts(self, user_id: int) -> List[LinkedInAccount]:
+        with db.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT member_urn, user_id, name, access_token, status FROM linkedin_accounts WHERE user_id = ?",
+                (user_id,)
+            )
+            return [LinkedInAccount(**dict(row)) for row in cursor.fetchall()]
 
 class LinkedInService:
     """Service to handle LinkedIn OAuth and posting"""
@@ -86,16 +71,30 @@ class LinkedInService:
         self.client_secret = settings.LINKEDIN_CLIENT_SECRET
         self.redirect_uri = settings.LINKEDIN_REDIRECT_URI
 
-    def get_auth_url(self) -> str:
-        """Generate LinkedIn OAuth URL"""
+    def get_auth_url(self, user_id: int) -> str:
+        """Generate LinkedIn OAuth URL with user_id linked state"""
+        state = base64.urlsafe_b64encode(os.urandom(16)).decode('utf8').rstrip('=')
+        
+        _linkedin_sessions[state] = {
+            "user_id": user_id,
+            "expires_at": time.time() + 600
+        }
+
         params = {
             "response_type": "code",
             "client_id": self.client_id,
             "redirect_uri": self.redirect_uri,
             "scope": settings.LINKEDIN_SCOPES,
-            "state": "random_string_123" # In production, use a secure CSRF state
+            "state": state
         }
         return f"https://www.linkedin.com/oauth/v2/authorization?{urlencode(params)}"
+
+    def get_user_id_from_state(self, state: str) -> int:
+        """Retrieve and validate user_id from state session"""
+        session = _linkedin_sessions.pop(state, None)
+        if not session or time.time() > session["expires_at"]:
+            raise ValueError("Invalid or expired LinkedIn OAuth session")
+        return session["user_id"]
 
     def exchange_code_for_token(self, code: str) -> str:
         """Exchange auth code for access token"""

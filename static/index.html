@@ -12,6 +12,7 @@
             --secondary: #667eea;
             --instagram: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
             --linkedin: #0077b5;
+            --x-color: #000000;
             --bg-color: #0f172a;
             --card-bg: rgba(30, 41, 59, 0.7);
             --text-color: #f8fafc;
@@ -131,6 +132,12 @@
             border-color: var(--linkedin);
             background: rgba(0, 119, 181, 0.1);
             box-shadow: 0 0 15px rgba(0, 119, 181, 0.2);
+        }
+
+        .platform-checkbox:checked+.platform-label.x-platform {
+            border-color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
         }
 
         /* Upload Styling */
@@ -345,12 +352,116 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #475569;
         }
+
+        /* Scheduled Jobs List */
+        .scheduled-jobs {
+            margin-top: 40px;
+        }
+
+        .job-card {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            transition: all 0.3s;
+        }
+
+        .job-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: scale(1.005);
+        }
+
+        .job-info {
+            flex: 1;
+        }
+
+        .job-platform {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            font-weight: 700;
+            color: #94a3b8;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .job-time {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        .status-pill {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-left: 15px;
+        }
+
+        .status-pill.pending {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+
+        .status-pill.published {
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+        }
+
+        .status-pill.failed {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+
+        .status-pill.cancelled {
+            background: rgba(148, 163, 184, 0.2);
+            color: #94a3b8;
+        }
+
+        .status-pill.running {
+            background: rgba(234, 179, 8, 0.2);
+            color: #facc15;
+        }
+
+        .job-actions {
+            margin-left: 20px;
+        }
+
+        .btn-cancel {
+            background: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-cancel:hover {
+            background: #ef4444;
+            color: white;
+        }
     </style>
 </head>
 
 <body>
     <div class="container">
         <header>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div id="userProfile"
+                    style="display: none; align-items: center; gap: 10px; font-weight: 600; color: #94a3b8;">
+                    <span>👤</span> <span id="userName">User</span>
+                </div>
+                <button id="logoutBtn" class="btn btn-secondary" style="padding: 8px 16px; font-size: 0.8rem;">
+                    Logout
+                </button>
+            </div>
             <h1>Post Everywhere.</h1>
             <p class="subtitle">Unified social media management powered by AI</p>
         </header>
@@ -370,6 +481,11 @@
                             <input type="checkbox" id="checkLinkedin" class="platform-checkbox">
                             <label for="checkLinkedin" class="platform-label linkedin">
                                 <span>💼</span> LinkedIn
+                            </label>
+
+                            <input type="checkbox" id="checkX" class="platform-checkbox">
+                            <label for="checkX" class="platform-label x-platform">
+                                <span>𝕏</span> X (Twitter)
                             </label>
                         </div>
                     </div>
@@ -455,11 +571,119 @@
                         placeholder="LinkedIn caption will appear here..."></textarea>
                     <div id="linkedinStatus" class="status-badge" style="margin-top: 10px;"></div>
                 </div>
+
+                <!-- X Preview -->
+                <div id="xPreviewCard" class="preview-card">
+                    <div class="preview-header">
+                        <span style="color: #fff">𝕏 X (Twitter) Preview</span>
+                        <div style="margin-left: auto;">
+                            <button id="addXAccount" class="btn btn-secondary"
+                                style="padding: 6px 12px; font-size: 0.75rem;">
+                                ➕ Add Account
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="account-select" id="xAccountSection">
+                        <div
+                            style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <label class="label" style="font-size: 0.8rem; margin-bottom: 0;">Post to X as:</label>
+                            <button id="refreshX"
+                                style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size: 0.7rem;">
+                                🔄 Refresh List
+                            </button>
+                        </div>
+                        <select id="xAccounts">
+                            <option value="">Loading accounts...</option>
+                        </select>
+                    </div>
+
+                    <textarea id="xCaption" rows="6" placeholder="What's happening?"></textarea>
+                    <div id="xStatus" class="status-badge" style="margin-top: 10px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="scheduled-jobs glass-panel">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 25px;">
+                <h2 style="font-size: 1.5rem; display: flex; align-items: center; gap: 12px;">
+                    <span>📅</span> Scheduled Posts
+                </h2>
+                <button id="refreshJobs" class="btn btn-secondary" style="padding: 8px 16px; font-size: 0.85rem;">
+                    🔄 Refresh
+                </button>
+            </div>
+
+            <div id="jobsList">
+                <!-- Jobs will be injected here -->
+                <p style="text-align: center; color: #94a3b8; padding: 20px;">Loading your scheduled posts...</p>
             </div>
         </div>
     </div>
 
     <script>
+        // Auth Check
+        function checkAuth() {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = '/static/login.html';
+                return null;
+            }
+            return token;
+        }
+
+        async function fetchWithAuth(url, options = {}) {
+            const token = checkAuth();
+            if (!token) return null;
+
+            options.headers = options.headers || {};
+            options.headers['Authorization'] = `Bearer ${token}`;
+
+            const response = await fetch(url, options);
+            if (response.status === 401) {
+                localStorage.removeItem('access_token');
+                window.location.href = '/static/login.html';
+                return null;
+            }
+            return response;
+        }
+
+        // Per-user localStorage key scoping to prevent cross-user leakage
+        let currentUserId = null;
+        function userKey(key) {
+            return currentUserId ? `${key}_${currentUserId}` : key;
+        }
+
+        async function initDashboard() {
+            const token = checkAuth();
+            if (!token) return;
+
+            try {
+                const resp = await fetchWithAuth('/api/auth/me');
+                if (resp && resp.ok) {
+                    const user = await resp.json();
+                    currentUserId = user.id;
+                    document.getElementById('userName').textContent = user.full_name;
+                    document.getElementById('userProfile').style.display = 'flex';
+                }
+            } catch (e) { }
+
+            fetchLinkedInAccounts();
+            fetchXAccounts();
+            fetchScheduledJobs();
+        }
+
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            // Clear user-scoped account selections on logout
+            if (currentUserId) {
+                localStorage.removeItem(`lastLinkedInUrn_${currentUserId}`);
+                localStorage.removeItem(`lastXUserId_${currentUserId}`);
+            }
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('currentUserId');
+            window.location.href = '/static/login.html';
+        });
+
         const fileInput = document.getElementById('fileInput');
         const dropZone = document.getElementById('dropZone');
         const mainPreview = document.getElementById('mainPreview');
@@ -469,13 +693,18 @@
         const checkLinkedin = document.getElementById('checkLinkedin');
         const instaPreviewCard = document.getElementById('instaPreviewCard');
         const linkedinPreviewCard = document.getElementById('linkedinPreviewCard');
+        const xPreviewCard = document.getElementById('xPreviewCard');
         const generateBtn = document.getElementById('generateBtn');
         const postBtn = document.getElementById('postBtn');
         const addLinkedinAccount = document.getElementById('addLinkedinAccount');
         const aiPrompt = document.getElementById('aiPrompt');
         const instaCaption = document.getElementById('instaCaption');
         const linkedinCaption = document.getElementById('linkedinCaption');
+        const xCaption = document.getElementById('xCaption');
         const linkedinAccounts = document.getElementById('linkedinAccounts');
+        const xAccounts = document.getElementById('xAccounts');
+        const addXAccount = document.getElementById('addXAccount');
+        const refreshX = document.getElementById('refreshX');
         const mainStatus = document.getElementById('mainStatus');
         const manualUrnToggle = { checked: false }; // Mock to prevent errors if referenced elsewhere
         const manualUrnInput = { value: '' }; // Mock to prevent errors if referenced elsewhere
@@ -492,8 +721,16 @@
             updatePostButtonState();
         });
 
+        const checkX = document.getElementById('checkX');
+        checkX.addEventListener('change', () => {
+            xPreviewCard.classList.toggle('active', checkX.checked);
+            if (checkX.checked) fetchXAccounts();
+            updatePostButtonState();
+        });
+
         addLinkedinAccount.addEventListener('click', () => {
-            window.open('/api/platforms/linkedin/connect', '_blank', 'width=600,height=600');
+            const token = localStorage.getItem('access_token');
+            window.open(`/api/platforms/linkedin/connect?token=${token}`, '_blank', 'width=600,height=600');
             // Inform user to refresh after connecting
             setTimeout(() => {
                 showStatus(document.getElementById('linkedinStatus'), '💡 Refresh the list after authorization is complete.', 'loading');
@@ -508,7 +745,7 @@
                 try {
                     const formData = new FormData();
                     formData.append('short_lived_token', token);
-                    const resp = await fetch('/auth/instagram/exchange-token', {
+                    const resp = await fetchWithAuth('/auth/instagram/exchange-token', {
                         method: 'POST',
                         body: formData
                     });
@@ -546,19 +783,20 @@
 
         function updatePostButtonState() {
             const hasFile = fileInput.files.length > 0;
-            const anyPlatformSelected = checkInsta.checked || checkLinkedin.checked;
+            const anyPlatformSelected = checkInsta.checked || checkLinkedin.checked || checkX.checked;
             postBtn.disabled = !(hasFile && anyPlatformSelected);
         }
 
         // Fetch LinkedIn Accounts
         async function fetchLinkedInAccounts() {
             try {
-                const response = await fetch('/api/platforms/linkedin/accounts');
+                const response = await fetchWithAuth('/api/platforms/linkedin/accounts');
+                if (!response) return;
                 const accounts = await response.json();
 
                 linkedinAccounts.innerHTML = '';
                 if (accounts && accounts.length > 0) {
-                    const savedUrn = localStorage.getItem('lastLinkedInUrn');
+                    const savedUrn = localStorage.getItem(userKey('lastLinkedInUrn'));
                     accounts.forEach(acc => {
                         const opt = document.createElement('option');
                         opt.value = acc.member_urn;
@@ -579,12 +817,55 @@
 
         linkedinAccounts.addEventListener('change', () => {
             if (linkedinAccounts.value) {
-                localStorage.setItem('lastLinkedInUrn', linkedinAccounts.value);
+                localStorage.setItem(userKey('lastLinkedInUrn'), linkedinAccounts.value);
             }
         });
 
         refreshLinkedIn.addEventListener('click', () => {
             fetchLinkedInAccounts();
+        });
+
+        // Fetch X Accounts
+        async function fetchXAccounts() {
+            try {
+                const response = await fetchWithAuth('/api/platforms/x/accounts');
+                if (!response) return;
+                const accounts = await response.json();
+
+                xAccounts.innerHTML = '';
+                if (accounts && accounts.length > 0) {
+                    const savedId = localStorage.getItem(userKey('lastXUserId'));
+                    accounts.forEach(acc => {
+                        const opt = document.createElement('option');
+                        opt.value = acc.x_user_id;
+                        opt.textContent = `@${acc.username}`;
+                        if (acc.x_user_id === savedId) opt.selected = true;
+                        xAccounts.appendChild(opt);
+                    });
+                } else {
+                    const opt = document.createElement('option');
+                    opt.value = "";
+                    opt.textContent = "No accounts connected";
+                    xAccounts.appendChild(opt);
+                }
+            } catch (err) {
+                xAccounts.innerHTML = '<option value="">Failed to load accounts</option>';
+            }
+        }
+
+        xAccounts.addEventListener('change', () => {
+            if (xAccounts.value) {
+                localStorage.setItem(userKey('lastXUserId'), xAccounts.value);
+            }
+        });
+
+        refreshX.addEventListener('click', () => {
+            fetchXAccounts();
+        });
+
+        addXAccount.addEventListener('click', () => {
+            const token = localStorage.getItem('access_token');
+            window.open(`/api/platforms/x/connect?token=${token}`, '_blank', 'width=600,height=800');
         });
 
 
@@ -599,6 +880,7 @@
             const platforms = [];
             if (checkInsta.checked) platforms.push('instagram');
             if (checkLinkedin.checked) platforms.push('linkedin');
+            if (checkX.checked) platforms.push('x');
 
             if (platforms.length === 0) {
                 showStatus(mainStatus, 'Select at least one platform', 'error');
@@ -616,16 +898,19 @@
                     formData.append('prompt', prompt);
                     formData.append('platform', platform);
 
-                    const resp = await fetch('/generate-caption', {
+                    const resp = await fetchWithAuth('/generate-caption', {
                         method: 'POST',
                         body: formData
                     });
+                    if (!resp) return;
                     const data = await resp.json();
 
                     if (platform === 'instagram') {
                         instaCaption.value = data.full_caption;
-                    } else {
+                    } else if (platform === 'linkedin') {
                         linkedinCaption.value = data.full_caption;
+                    } else {
+                        xCaption.value = data.full_caption;
                     }
                 }
                 showStatus(mainStatus, '✅ Captions ready! Edit them in the previews below.', 'success');
@@ -642,6 +927,7 @@
             const platforms = [];
             if (checkInsta.checked) platforms.push('instagram');
             if (checkLinkedin.checked) platforms.push('linkedin');
+            if (checkX.checked) platforms.push('x');
 
             postBtn.disabled = true;
             postBtn.innerHTML = '<div class="loader"></div> Posting...';
@@ -651,8 +937,13 @@
             const file = fileInput.files[0];
 
             for (const platform of platforms) {
-                const statusEl = platform === 'instagram' ? document.getElementById('instaStatus') : document.getElementById('linkedinStatus');
+                let statusEl;
+                if (platform === 'instagram') statusEl = document.getElementById('instaStatus');
+                else if (platform === 'linkedin') statusEl = document.getElementById('linkedinStatus');
+                else if (platform === 'x') statusEl = document.getElementById('xStatus');
+
                 showStatus(statusEl, 'Posting...', 'loading');
+
 
                 try {
                     if (platform === 'instagram') {
@@ -660,10 +951,11 @@
                         formData.append('file', file);
                         formData.append('caption', instaCaption.value);
 
-                        const resp = await fetch('/upload-post', {
+                        const resp = await fetchWithAuth('/upload-post', {
                             method: 'POST',
                             body: formData
                         });
+                        if (!resp) return;
                         const data = await resp.json();
 
                         if (resp.ok && data.success) {
@@ -679,18 +971,46 @@
                             continue;
                         }
 
-                        // Remember the last used account
-                        localStorage.setItem('lastLinkedInUrn', urn);
+                        // Remember the last used account (scoped per user)
+                        localStorage.setItem(userKey('lastLinkedInUrn'), urn);
 
                         const formData = new FormData();
                         formData.append('member_urn', urn);
                         formData.append('text', linkedinCaption.value);
                         formData.append('file', file);
 
-                        const resp = await fetch('/api/platforms/linkedin/post', {
+                        const resp = await fetchWithAuth('/api/platforms/linkedin/post', {
                             method: 'POST',
                             body: formData
                         });
+                        if (!resp) return;
+                        const data = await resp.json();
+
+                        if (resp.ok) {
+                            showStatus(statusEl, '✅ Published!', 'success');
+                            successCount++;
+                        } else {
+                            showStatus(statusEl, `❌ Error: ${data.detail || 'Failed'}`, 'error');
+                        }
+                    } else if (platform === 'x') {
+                        const xUserId = xAccounts.value;
+                        if (!xUserId) {
+                            showStatus(statusEl, '❌ No account selected', 'error');
+                            continue;
+                        }
+
+                        localStorage.setItem(userKey('lastXUserId'), xUserId);
+
+                        const formData = new FormData();
+                        formData.append('x_user_id', xUserId);
+                        formData.append('text', xCaption.value);
+                        formData.append('file', file);
+
+                        const resp = await fetchWithAuth('/api/platforms/x/post', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        if (!resp) return;
                         const data = await resp.json();
 
                         if (resp.ok) {
@@ -725,18 +1045,78 @@
 
         // Initialize
         window.addEventListener('load', () => {
-            fetchLinkedInAccounts();
+            initDashboard();
         });
 
         // Listen for OAuth success from popups
         window.addEventListener('message', (event) => {
             if (event.data === 'platform_connected') {
                 fetchLinkedInAccounts();
+                fetchXAccounts();
                 showStatus(document.getElementById('linkedinStatus'), '✅ Account list updated!', 'success');
+                showStatus(document.getElementById('xStatus'), '✅ Account list updated!', 'success');
             }
         });
 
         fetchLinkedInAccounts();
+
+        // Scheduled Jobs Management
+        async function fetchScheduledJobs() {
+            const listEl = document.getElementById('jobsList');
+            try {
+                const resp = await fetchWithAuth('/scheduled-posts');
+                if (!resp || !resp.ok) return;
+                const data = await resp.json();
+
+                if (data.jobs.length === 0) {
+                    listEl.innerHTML = '<p style="text-align: center; color: #94a3b8; padding: 20px;">No scheduled posts found.</p>';
+                    return;
+                }
+
+                listEl.innerHTML = '';
+                data.jobs.sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at)).forEach(job => {
+                    const card = document.createElement('div');
+                    card.className = 'job-card';
+
+                    const time = new Date(job.scheduled_at).toLocaleString();
+                    const platformIcon = job.platform.includes('instagram') ? '📸' : (job.platform.includes('linkedin') ? '💼' : '𝕏');
+                    const platformName = job.platform.charAt(0).toUpperCase() + job.platform.slice(1).replace('_', ' ');
+
+                    card.innerHTML = `
+                        <div class="job-info">
+                            <div class="job-platform">${platformIcon} ${platformName}</div>
+                            <div class="job-time">${time}</div>
+                        </div>
+                        <div class="status-pill ${job.status}">${job.status}</div>
+                        <div class="job-actions">
+                            ${job.status === 'pending' ? `<button class="btn-cancel" onclick="cancelJob('${job.job_id}')">Cancel</button>` : ''}
+                        </div>
+                    `;
+                    listEl.appendChild(card);
+                });
+            } catch (e) {
+                listEl.innerHTML = '<p style="text-align: center; color: #f87171; padding: 20px;">Failed to load scheduled posts.</p>';
+            }
+        }
+
+        async function cancelJob(jobId) {
+            if (!confirm('Are you sure you want to cancel this scheduled post?')) return;
+
+            try {
+                const resp = await fetchWithAuth(`/scheduled-posts/${jobId}`, { method: 'DELETE' });
+                if (resp && resp.ok) {
+                    fetchScheduledJobs();
+                    showStatus(mainStatus, '✅ Post cancelled successfully', 'success');
+                } else {
+                    const err = await resp.json();
+                    alert(`Error: ${err.detail}`);
+                }
+            } catch (e) {
+                alert('Connection error');
+            }
+        }
+
+        document.getElementById('refreshJobs').addEventListener('click', fetchScheduledJobs);
 
         // Drag and Drop
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {

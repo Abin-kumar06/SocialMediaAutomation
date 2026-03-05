@@ -3,14 +3,16 @@ Instagram Auto Post API - Main Application
 """
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, HTTPException, BackgroundTasks, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, BackgroundTasks, File, UploadFile, Form, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
+from typing import List, Optional, Dict
 from app.models import (
     InstagramPostResponse, HealthCheck, InstagramMultiPostResponse,
     LinkedInPostResponse, LinkedInAccount, XAccount,
-    ScheduledPostResponse, ScheduledJobInfo, ScheduledJobsListResponse
+    ScheduledPostResponse, ScheduledJobInfo, ScheduledJobsListResponse,
+    User, UserLogin, Token
 )
+from app.services.auth_service import auth_service
 from app.config import settings
 from app.services import ImageService, InstagramService
 from app.services.ollama_caption_service import OllamaCaptionService
@@ -104,6 +106,35 @@ linkedin_service = LinkedInService()
 token_service = InstagramTokenService()
 
 
+# ---------------------------------------------------------------------------
+# Authentication Routes
+# ---------------------------------------------------------------------------
+
+@app.post("/api/auth/signup", response_model=User)
+async def signup(user: User):
+    db_user = await auth_service.get_user_by_email(user.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    return await auth_service.create_user(user)
+
+@app.post("/api/auth/login", response_model=Token)
+async def login(user_data: UserLogin):
+    user = await auth_service.get_user_by_email(user_data.email)
+    if not user or not auth_service.verify_password(user_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token = auth_service.create_access_token(data={"sub": user.email})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/api/auth/me", response_model=User)
+async def get_me(current_user: User = Depends(auth_service.get_current_user)):
+    return current_user
+
+
+
 @app.get("/", response_model=HealthCheck)
 async def health_check():
     """Health check endpoint"""
@@ -144,14 +175,19 @@ async def instagram_connect():
 # LinkedIn Platform Routes
 
 @app.get("/api/platforms/linkedin/connect")
-async def linkedin_connect():
-    """Redirect to LinkedIn OAuth"""
-    return RedirectResponse(linkedin_service.get_auth_url())
+async def linkedin_connect(
+    token: Optional[str] = None,
+    current_user: User = Depends(auth_service.get_current_user)
+):
+    """Redirect to LinkedIn OAuth with user-linked state"""
+    # Note: get_current_user now handles token from query param if provided
+    return RedirectResponse(linkedin_service.get_auth_url(current_user.id))
 
 
 @app.get("/api/platforms/linkedin/callback")
 async def linkedin_callback(
     code: str = None,
+    state: str = None,
     error: str = None,
     error_description: str = None
 ):
@@ -169,15 +205,18 @@ async def linkedin_callback(
         )
 
     try:
-        # 1. Exchange code for access token
+        # 1. Retrieve user_id from state
+        user_id = linkedin_service.get_user_id_from_state(state)
+        
+        # 2. Exchange code for token
         access_token = linkedin_service.exchange_code_for_token(code)
         
-        # 2. Fetch member profile
+        # 3. Fetch member profile
         profile = linkedin_service.get_member_profile(access_token)
         
-        # 3. Store account in-memory (now in SQLite)
+        # 4. Store LinkedIn Account
         account = LinkedInAccount(
-            user_id="default",
+            user_id=user_id,
             member_urn=profile["member_urn"],
             access_token=access_token,
             name=profile["name"]
@@ -192,9 +231,12 @@ async def linkedin_callback(
 # X (Twitter) Platform Routes
 
 @app.get("/api/platforms/x/connect")
-async def x_connect():
-    """Redirect to X OAuth 2.0 with PKCE"""
-    return RedirectResponse(x_oauth_service.get_authorization_url())
+async def x_connect(
+    token: Optional[str] = None,
+    current_user: User = Depends(auth_service.get_current_user)
+):
+    """Redirect to X OAuth 2.0 with PKCE and user-linked state"""
+    return RedirectResponse(x_oauth_service.get_authorization_url(current_user.id))
 
 
 @app.get("/api/platforms/x/callback")
@@ -212,7 +254,7 @@ async def x_callback(
 
     try:
         # 1. Exchange code for tokens
-        tokens = await x_oauth_service.exchange_code(code, state)
+        tokens, user_id = await x_oauth_service.exchange_code(code, state)
         
         # 2. Fetch X user profile
         x_user = await x_client.get_me(tokens["access_token"])
@@ -222,7 +264,7 @@ async def x_callback(
         expires_at = time.time() + expires_in
         
         account = XAccount(
-            user_id="default",
+            user_id=user_id,
             x_user_id=x_user["id"],
             username=x_user["username"],
             access_token=tokens["access_token"],
@@ -239,9 +281,9 @@ async def x_callback(
 
 
 @app.get("/api/platforms/x/accounts")
-async def list_x_accounts():
-    """List all connected X accounts (hiding sensitive tokens)"""
-    accounts = x_client.store.get_all_accounts()
+async def list_x_accounts(current_user: User = Depends(auth_service.get_current_user)):
+    """List all connected X accounts for the current user"""
+    accounts = x_client.store.get_all_accounts(current_user.id)
     return [a.dict(exclude={"access_token", "refresh_token"}) for a in accounts]
 
 
@@ -249,14 +291,16 @@ async def list_x_accounts():
 async def x_post(
     x_user_id: str = Form(..., description="The X User ID to post from"),
     text: str = Form(None),
+    file: UploadFile = File(None),
     auto_caption: bool = Form(False),
-    prompt: str = Form(None)
+    prompt: str = Form(None),
+    current_user: User = Depends(auth_service.get_current_user)
 ):
-    """Post a tweet to X"""
-    if not text and not auto_caption:
-        raise HTTPException(status_code=400, detail="Provide either text or enable auto_caption")
+    """Post a tweet with optional image to X"""
+    if not text and not auto_caption and not file:
+        raise HTTPException(status_code=400, detail="Provide either text, enable auto_caption, or upload a file")
     
-    account = x_client.store.get_account(x_user_id)
+    account = x_client.store.get_account(x_user_id, current_user.id)
     if not account:
         raise HTTPException(status_code=404, detail="X account not found. Please connect first.")
 
@@ -267,8 +311,15 @@ async def x_post(
         generated = ollama_service.generate_caption(platform="x", topic=prompt)
         final_text = generated.get("full_caption")
 
+    file_path = None
+    media_ids = []
     try:
-        tweet = await x_client.post_tweet(account.access_token, final_text)
+        if file:
+            file_path = await image_service.save_upload(file)
+            media_id = await x_client.upload_media(account.access_token, str(file_path))
+            media_ids.append(media_id)
+            
+        tweet = await x_client.post_tweet(account.access_token, final_text, media_ids=media_ids if media_ids else None)
         return {
             "success": True,
             "tweet_id": tweet.get("id"),
@@ -277,12 +328,16 @@ async def x_post(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if file_path:
+            image_service.cleanup_file(file_path)
+
 
 
 @app.get("/api/platforms/linkedin/accounts", response_model=List[LinkedInAccount])
-async def list_linkedin_accounts():
-    """List all connected LinkedIn accounts"""
-    return linkedin_service.store.get_all_accounts()
+async def list_linkedin_accounts(current_user: User = Depends(auth_service.get_current_user)):
+    """List all connected LinkedIn accounts for the current user"""
+    return linkedin_service.store.get_all_accounts(current_user.id)
 
 
 @app.post("/api/platforms/linkedin/post", response_model=LinkedInPostResponse)
@@ -292,13 +347,14 @@ async def linkedin_post(
     file: UploadFile = File(None),
     image_url: str = Form(None),
     auto_caption: bool = Form(False),
-    prompt: str = Form(None)
+    prompt: str = Form(None),
+    current_user: User = Depends(auth_service.get_current_user)
 ):
     """Post text or image to LinkedIn"""
     if not text and not auto_caption:
         raise HTTPException(status_code=400, detail="Provide either text or enable auto_caption")
     
-    account = linkedin_service.store.get_account(member_urn)
+    account = linkedin_service.store.get_account(member_urn, current_user.id)
     if not account:
         raise HTTPException(status_code=404, detail="LinkedIn account not found. Please connect first.")
 
@@ -360,7 +416,8 @@ async def create_instagram_post(
     keywords: str = Form(None, description="Comma-separated keywords"),
     tone: str = Form("", description="Caption tone (e.g., playful, professional)"),
     platform: str = Form("instagram", description="Platform (instagram, linkedin, x)"),
-    hashtag_count: int = Form(8, description="Number of hashtags to generate (legacy, Ollama uses platform defaults)")
+    hashtag_count: int = Form(8, description="Number of hashtags to generate (legacy, Ollama uses platform defaults)"),
+    current_user: User = Depends(auth_service.get_current_user)
 ):
     """
     Upload an image or provide a URL and post to Instagram (Synchronous)
@@ -384,15 +441,10 @@ async def create_instagram_post(
             status_code=400,
             detail="Provide either caption or enable auto_caption with a prompt"
         )
-    if not settings.PAGE_ACCESS_TOKEN:
-        raise HTTPException(
-            status_code=500,
-            detail="Access token not configured"
-        )
     
     # Ensure token is fresh before posting (refreshes automatically if expiring soon)
     try:
-        token_service.get_access_token_for_posting()
+        page_access_token = token_service.get_access_token_for_user(current_user.id)
     except InstagramReauthRequired as e:
         raise HTTPException(status_code=401, detail=str(e))
     
@@ -430,7 +482,7 @@ async def create_instagram_post(
             final_caption = "Check it out! 📸"
 
         # Step 4: Create Instagram container
-        creation_id = instagram_service.create_media_container(image_url, final_caption)
+        creation_id = instagram_service.create_media_container(image_url, final_caption, page_access_token)
         
         # Step 5: Wait for processing
         time.sleep(2)
@@ -444,7 +496,7 @@ async def create_instagram_post(
             )
         
         # Step 7: Publish
-        post_id = instagram_service.publish_media_container(creation_id)
+        post_id = instagram_service.publish_media_container(creation_id, page_access_token)
         
         # Cleanup
         image_service.cleanup_file(file_path)
@@ -483,7 +535,8 @@ async def create_instagram_post_async(
     keywords: str = Form(None),
     tone: str = Form(""),
     platform: str = Form("instagram"),
-    hashtag_count: int = Form(8)
+    hashtag_count: int = Form(8),
+    current_user: User = Depends(auth_service.get_current_user)
 ):
     """
     Upload and post asynchronously (publishing in background)
@@ -501,12 +554,9 @@ async def create_instagram_post_async(
             detail="Provide either caption or enable auto_caption with a prompt"
         )
     
-    if not settings.PAGE_ACCESS_TOKEN:
-        raise HTTPException(status_code=500, detail="Access token not configured")
-    
     # Ensure token is fresh before posting (refreshes automatically if expiring soon)
     try:
-        token_service.get_access_token_for_posting()
+        page_access_token = token_service.get_access_token_for_user(current_user.id)
     except InstagramReauthRequired as e:
         raise HTTPException(status_code=401, detail=str(e))
     
@@ -725,20 +775,13 @@ async def refresh_token():
 @app.post("/auth/instagram/exchange-token")
 async def instagram_oauth_callback(
     short_lived_token: str = Form(..., description="Short-lived user access token from OAuth callback"),
+    current_user: User = Depends(auth_service.get_current_user)
 ):
-    """
-    Instagram OAuth callback: receive short-lived token → exchange to long-lived → store only long-lived.
-
-    Flow (no token logic in route; all in service):
-      1. Exchange short_lived_token via Meta API → (long_token, expires_at).
-      2. Store only the long-lived token; short-lived is never stored.
-    If the short-lived token is expired (Meta 190), returns 401 and requires re-login.
-    """
     try:
         # Step 1: Convert short-lived to long-lived (~60 days); raises if token expired/invalid
         long_token, expires_at = token_service.exchange_short_lived_token(short_lived_token)
-        # Step 2: Store ONLY long-lived token (discard short-lived); updates store + .env
-        record = token_service.store_long_lived_token(long_token, expires_at)
+        # Step 2: Store ONLY long-lived token (discard short-lived); updates store
+        token_service.store_long_lived_token(current_user.id, long_token, expires_at)
         return FileResponse("static/success.html")
     except InstagramReauthRequired as e:
         raise HTTPException(status_code=401, detail=str(e))
@@ -809,8 +852,9 @@ async def schedule_instagram_post(
     caption: str = Form(None, description="Post caption"),
     auto_caption: bool = Form(False, description="Generate caption automatically with Ollama"),
     prompt: str = Form(None, description="Prompt for auto caption generation"),
-    keywords: str = Form(None, description="Comma-separated keywords"),
+    hashtag_count: int = Form(8), # legacy
     platform: str = Form("instagram"),
+    current_user: User = Depends(auth_service.get_current_user)
 ):
     """Schedule a single-image Instagram post for a future time."""
     if not file and not image_url:
@@ -851,7 +895,7 @@ async def schedule_instagram_post(
         final_caption = "Check it out! 📸"
 
     scheduler = app.state.scheduler
-    job_id = scheduler_svc.schedule_instagram_post(scheduler, run_at, hosted_url, final_caption)
+    job_id = scheduler_svc.schedule_instagram_post(scheduler, run_at, current_user.id, hosted_url, final_caption)
 
     return ScheduledPostResponse(
         success=True,
@@ -872,6 +916,7 @@ async def schedule_instagram_multi_post(
     prompt: str = Form(None),
     keywords: str = Form(None),
     platform: str = Form("instagram"),
+    current_user: User = Depends(auth_service.get_current_user)
 ):
     """Schedule a multi-image Instagram carousel for a future time."""
     if not files and not image_urls:
@@ -902,7 +947,7 @@ async def schedule_instagram_multi_post(
         final_caption = "Check it out! 📸"
 
     scheduler = app.state.scheduler
-    job_id = scheduler_svc.schedule_instagram_carousel(scheduler, run_at, hosted_urls, final_caption)
+    job_id = scheduler_svc.schedule_instagram_carousel(scheduler, run_at, current_user.id, hosted_urls, final_caption)
 
     return ScheduledPostResponse(
         success=True,
@@ -922,6 +967,7 @@ async def schedule_linkedin_post(
     image_url: str = Form(None, description="Direct image URL (will be downloaded)"),
     auto_caption: bool = Form(False),
     prompt: str = Form(None),
+    current_user: User = Depends(auth_service.get_current_user)
 ):
     """Schedule a LinkedIn post (text or image) for a future time."""
     if not text and not auto_caption:
@@ -929,7 +975,7 @@ async def schedule_linkedin_post(
     if auto_caption and not prompt:
         raise HTTPException(status_code=400, detail="prompt is required when auto_caption=true")
 
-    account = linkedin_service.store.get_account(member_urn)
+    account = linkedin_service.store.get_account(member_urn, current_user.id)
     if not account:
         raise HTTPException(status_code=404, detail="LinkedIn account not found. Please connect first.")
 
@@ -956,7 +1002,7 @@ async def schedule_linkedin_post(
 
     scheduler = app.state.scheduler
     job_id = scheduler_svc.schedule_linkedin_post(
-        scheduler, run_at, member_urn, account.access_token, final_text, saved_path
+        scheduler, run_at, current_user.id, member_urn, account.access_token, final_text, saved_path
     )
 
     return ScheduledPostResponse(
@@ -968,10 +1014,67 @@ async def schedule_linkedin_post(
     )
 
 
+@app.post("/api/platforms/x/schedule-post", response_model=ScheduledPostResponse)
+async def schedule_x_post(
+    scheduled_at: str = Form(..., description="Future datetime in ISO-8601 format"),
+    x_user_id: str = Form(..., description="X User ID"),
+    text: str = Form(None, description="Tweet text"),
+    file: UploadFile = File(None, description="Image file (JPG, PNG)"),
+    image_url: str = Form(None, description="Direct image URL"),
+    auto_caption: bool = Form(False),
+    prompt: str = Form(None),
+    current_user: User = Depends(auth_service.get_current_user)
+):
+    """Schedule an X post (text or image) for a future time."""
+    if not text and not auto_caption and not file and not image_url:
+        raise HTTPException(status_code=400, detail="Provide text, enable auto_caption, or provide an image")
+    
+    account = x_client.store.get_account(x_user_id, current_user.id)
+    if not account:
+        raise HTTPException(status_code=404, detail="X account not found. Please connect first.")
+
+    run_at = _parse_scheduled_at(scheduled_at)
+
+    # Resolve text
+    final_text = text
+    if auto_caption:
+        if not prompt:
+            raise HTTPException(status_code=400, detail="Prompt required for auto_caption")
+        try:
+            generated = ollama_service.generate_caption(platform="x", topic=prompt)
+            final_text = generated.get("full_caption") or text
+        except Exception as e:
+            print(f"⚠ Caption generation failed: {e}")
+            final_text = text
+
+    # Save uploaded file permanently until job fires
+    saved_path = None
+    if file:
+        saved_path = await image_service.save_upload(file)
+        saved_path = str(saved_path)
+    elif image_url:
+        dl_path = await image_service.process_image_from_url(image_url)
+        saved_path = str(dl_path)
+
+    scheduler = app.state.scheduler
+    job_id = scheduler_svc.schedule_x_post(
+        scheduler, run_at, current_user.id, x_user_id, account.access_token, final_text, saved_path
+    )
+
+    return ScheduledPostResponse(
+        success=True,
+        job_id=job_id,
+        scheduled_at=run_at.isoformat(),
+        platform="x",
+        message=f"X post scheduled for {run_at.isoformat()}"
+    )
+
+
 @app.get("/scheduled-posts", response_model=ScheduledJobsListResponse)
-async def list_scheduled_posts():
+
+async def list_scheduled_posts(current_user: User = Depends(auth_service.get_current_user)):
     """List all scheduled, running, published, and failed post jobs."""
-    jobs = scheduler_svc.list_jobs()
+    jobs = scheduler_svc.list_jobs(current_user.id)
     return ScheduledJobsListResponse(
         jobs=[ScheduledJobInfo(**j) for j in jobs],
         total=len(jobs)
@@ -979,9 +1082,9 @@ async def list_scheduled_posts():
 
 
 @app.delete("/scheduled-posts/{job_id}")
-async def cancel_scheduled_post(job_id: str):
+async def cancel_scheduled_post(job_id: str, current_user: User = Depends(auth_service.get_current_user)):
     """Cancel a pending scheduled post by job_id."""
-    found = scheduler_svc.cancel_job(app.state.scheduler, job_id)
+    found = scheduler_svc.cancel_job(app.state.scheduler, job_id, current_user.id)
     if not found:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
     return {"success": True, "job_id": job_id, "message": "Scheduled post cancelled"}

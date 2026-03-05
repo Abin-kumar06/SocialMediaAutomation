@@ -23,9 +23,10 @@ if TYPE_CHECKING:
 _job_meta: dict[str, dict] = {}  # job_id → metadata dict
 
 
-def _make_meta(job_id: str, platform: str, scheduled_at: datetime) -> dict:
+def _make_meta(job_id: str, platform: str, scheduled_at: datetime, user_id: int) -> dict:
     return {
         "job_id": job_id,
+        "user_id": user_id,
         "platform": platform,
         "scheduled_at": scheduled_at.isoformat(),
         "status": "pending",
@@ -36,15 +37,19 @@ def _make_meta(job_id: str, platform: str, scheduled_at: datetime) -> dict:
 # Job functions (called by APScheduler at run-time)
 # ---------------------------------------------------------------------------
 
-def _run_instagram_post(job_id: str, hosted_image_url: str, caption: str):
+def _run_instagram_post(job_id: str, user_id: int, hosted_image_url: str, caption: str):
     """Execute a scheduled Instagram single-image post."""
     from app.services import InstagramService
     _job_meta[job_id]["status"] = "running"
     try:
+        from app.services.instagram_token_service import InstagramTokenService
+        token_svc = InstagramTokenService()
+        access_token = token_svc.get_access_token_for_user(user_id)
+        
         svc = InstagramService()
-        creation_id = svc.create_media_container(hosted_image_url, caption)
+        creation_id = svc.create_media_container(hosted_image_url, caption, access_token)
         import time; time.sleep(2)
-        post_id = svc.publish_media_container(creation_id)
+        post_id = svc.publish_media_container(creation_id, access_token)
         _job_meta[job_id]["status"] = "published"
         _job_meta[job_id]["post_id"] = post_id
         print(f"✅ Scheduled Instagram post published — post_id={post_id}  job_id={job_id}")
@@ -54,15 +59,19 @@ def _run_instagram_post(job_id: str, hosted_image_url: str, caption: str):
         print(f"❌ Scheduled Instagram post failed — job_id={job_id}  error={e}")
 
 
-def _run_instagram_carousel(job_id: str, hosted_image_urls: list[str], caption: str):
+def _run_instagram_carousel(job_id: str, user_id: int, hosted_image_urls: list[str], caption: str):
     """Execute a scheduled Instagram carousel post."""
     from app.services import InstagramService
     _job_meta[job_id]["status"] = "running"
     try:
+        from app.services.instagram_token_service import InstagramTokenService
+        token_svc = InstagramTokenService()
+        access_token = token_svc.get_access_token_for_user(user_id)
+
         svc = InstagramService()
-        creation_id = svc.create_carousel_media(hosted_image_urls, caption)
+        creation_id = svc.create_carousel_media(hosted_image_urls, caption, access_token)
         import time; time.sleep(2)
-        post_id = svc.publish_media_container(creation_id)
+        post_id = svc.publish_media_container(creation_id, access_token)
         _job_meta[job_id]["status"] = "published"
         _job_meta[job_id]["post_id"] = post_id
         print(f"✅ Scheduled Instagram carousel published — post_id={post_id}  job_id={job_id}")
@@ -97,6 +106,39 @@ def _run_linkedin_post(
         print(f"❌ Scheduled LinkedIn post failed — job_id={job_id}  error={e}")
 
 
+def _run_x_post(
+    job_id: str,
+    x_user_id: str,
+    access_token: str,
+    text: Optional[str] = None,
+    file_path: Optional[str] = None,
+):
+    """Execute a scheduled X (Twitter) post."""
+    import asyncio
+    from app.services.x_client import x_client
+    _job_meta[job_id]["status"] = "running"
+    
+    async def _async_logic():
+        media_ids = []
+        if file_path:
+            media_id = await x_client.upload_media(access_token, file_path)
+            media_ids.append(media_id)
+            
+        return await x_client.post_tweet(access_token, text, media_ids=media_ids if media_ids else None)
+
+    try:
+        tweet = asyncio.run(_async_logic())
+        _job_meta[job_id]["status"] = "published"
+        _job_meta[job_id]["post_id"] = tweet.get("id")
+        print(f"✅ Scheduled X post published — tweet_id={tweet.get('id')}  job_id={job_id}")
+    except Exception as e:
+        _job_meta[job_id]["status"] = "failed"
+        _job_meta[job_id]["error"] = str(e)
+        print(f"❌ Scheduled X post failed — job_id={job_id}  error={e}")
+
+
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -104,16 +146,22 @@ def _run_linkedin_post(
 def schedule_instagram_post(
     scheduler: "BackgroundScheduler",
     scheduled_at: datetime,
+    user_id: int,
     hosted_image_url: str,
     caption: str,
 ) -> str:
     job_id = str(uuid.uuid4())
-    _job_meta[job_id] = _make_meta(job_id, "instagram", scheduled_at)
+    _job_meta[job_id] = _make_meta(job_id, "instagram", scheduled_at, user_id)
     scheduler.add_job(
         _run_instagram_post,
         trigger="date",
         run_date=scheduled_at,
-        kwargs={"job_id": job_id, "hosted_image_url": hosted_image_url, "caption": caption},
+        kwargs={
+            "job_id": job_id, 
+            "user_id": user_id,
+            "hosted_image_url": hosted_image_url, 
+            "caption": caption
+        },
         id=job_id,
         replace_existing=False,
         misfire_grace_time=300,
@@ -124,16 +172,22 @@ def schedule_instagram_post(
 def schedule_instagram_carousel(
     scheduler: "BackgroundScheduler",
     scheduled_at: datetime,
+    user_id: int,
     hosted_image_urls: list[str],
     caption: str,
 ) -> str:
     job_id = str(uuid.uuid4())
-    _job_meta[job_id] = _make_meta(job_id, "instagram_carousel", scheduled_at)
+    _job_meta[job_id] = _make_meta(job_id, "instagram_carousel", scheduled_at, user_id)
     scheduler.add_job(
         _run_instagram_carousel,
         trigger="date",
         run_date=scheduled_at,
-        kwargs={"job_id": job_id, "hosted_image_urls": hosted_image_urls, "caption": caption},
+        kwargs={
+            "job_id": job_id, 
+            "user_id": user_id,
+            "hosted_image_urls": hosted_image_urls, 
+            "caption": caption
+        },
         id=job_id,
         replace_existing=False,
         misfire_grace_time=300,
@@ -144,13 +198,14 @@ def schedule_instagram_carousel(
 def schedule_linkedin_post(
     scheduler: "BackgroundScheduler",
     scheduled_at: datetime,
+    user_id: int,
     member_urn: str,
     access_token: str,
     text: str,
     file_path: Optional[str] = None,
 ) -> str:
     job_id = str(uuid.uuid4())
-    _job_meta[job_id] = _make_meta(job_id, "linkedin", scheduled_at)
+    _job_meta[job_id] = _make_meta(job_id, "linkedin", scheduled_at, user_id)
     scheduler.add_job(
         _run_linkedin_post,
         trigger="date",
@@ -169,18 +224,48 @@ def schedule_linkedin_post(
     return job_id
 
 
-def list_jobs() -> List[dict]:
-    """Return metadata for all tracked jobs (pending, running, published, failed)."""
-    return list(_job_meta.values())
+def schedule_x_post(
+    scheduler: "BackgroundScheduler",
+    scheduled_at: datetime,
+    user_id: int,
+    x_user_id: str,
+    access_token: str,
+    text: Optional[str] = None,
+    file_path: Optional[str] = None,
+) -> str:
+    job_id = str(uuid.uuid4())
+    _job_meta[job_id] = _make_meta(job_id, "x", scheduled_at, user_id)
+    scheduler.add_job(
+        _run_x_post,
+        trigger="date",
+        run_date=scheduled_at,
+        kwargs={
+            "job_id": job_id,
+            "x_user_id": x_user_id,
+            "access_token": access_token,
+            "text": text,
+            "file_path": file_path,
+        },
+        id=job_id,
+        replace_existing=False,
+        misfire_grace_time=300,
+    )
+    return job_id
 
 
-def cancel_job(scheduler: "BackgroundScheduler", job_id: str) -> bool:
-    """Remove a pending job. Returns True if found and removed."""
-    try:
-        scheduler.remove_job(job_id)
-    except Exception:
-        pass  # Already fired or doesn't exist in scheduler
-    if job_id in _job_meta:
+
+def list_jobs(user_id: int) -> List[dict]:
+    """Return metadata for all tracked jobs for a specific user."""
+    return [meta for meta in _job_meta.values() if meta.get("user_id") == user_id]
+
+
+def cancel_job(scheduler: "BackgroundScheduler", job_id: str, user_id: int) -> bool:
+    """Remove a pending job if it belongs to the user. Returns True if found and removed."""
+    if job_id in _job_meta and _job_meta[job_id].get("user_id") == user_id:
+        try:
+            scheduler.remove_job(job_id)
+        except Exception:
+            pass  # Already fired or doesn't exist in scheduler
         _job_meta[job_id]["status"] = "cancelled"
         return True
     return False
