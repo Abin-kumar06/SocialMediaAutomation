@@ -16,21 +16,29 @@ if TYPE_CHECKING:
     from apscheduler.schedulers.background import BackgroundScheduler
 
 
+from app.database import db
+
 # ---------------------------------------------------------------------------
-# In-memory metadata store
+# Database helpers
 # ---------------------------------------------------------------------------
 
-_job_meta: dict[str, dict] = {}  # job_id → metadata dict
+def _store_meta(job_id: str, platform: str, scheduled_at: datetime, user_id: int, image_url: str = None, caption: str = None):
+    with db.get_connection() as conn:
+        conn.execute("""
+            INSERT INTO scheduled_posts (job_id, user_id, platform, scheduled_at, status, image_url, caption)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (job_id, user_id, platform, scheduled_at.isoformat(), "pending", image_url, caption))
+        conn.commit()
 
-
-def _make_meta(job_id: str, platform: str, scheduled_at: datetime, user_id: int) -> dict:
-    return {
-        "job_id": job_id,
-        "user_id": user_id,
-        "platform": platform,
-        "scheduled_at": scheduled_at.isoformat(),
-        "status": "pending",
-    }
+def _update_status(job_id: str, status: str, post_id: str = None, error: str = None):
+    with db.get_connection() as conn:
+        if post_id:
+            conn.execute("UPDATE scheduled_posts SET status = ?, post_id = ? WHERE job_id = ?", (status, post_id, job_id))
+        elif error:
+            conn.execute("UPDATE scheduled_posts SET status = ?, error = ? WHERE job_id = ?", (status, error, job_id))
+        else:
+            conn.execute("UPDATE scheduled_posts SET status = ? WHERE job_id = ?", (status, job_id))
+        conn.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -40,7 +48,7 @@ def _make_meta(job_id: str, platform: str, scheduled_at: datetime, user_id: int)
 def _run_instagram_post(job_id: str, user_id: int, hosted_image_url: str, caption: str):
     """Execute a scheduled Instagram single-image post."""
     from app.services import InstagramService
-    _job_meta[job_id]["status"] = "running"
+    _update_status(job_id, "running")
     try:
         from app.services.instagram_token_service import InstagramTokenService
         token_svc = InstagramTokenService()
@@ -50,19 +58,17 @@ def _run_instagram_post(job_id: str, user_id: int, hosted_image_url: str, captio
         creation_id = svc.create_media_container(hosted_image_url, caption, access_token)
         import time; time.sleep(2)
         post_id = svc.publish_media_container(creation_id, access_token)
-        _job_meta[job_id]["status"] = "published"
-        _job_meta[job_id]["post_id"] = post_id
+        _update_status(job_id, "published", post_id=post_id)
         print(f"✅ Scheduled Instagram post published — post_id={post_id}  job_id={job_id}")
     except Exception as e:
-        _job_meta[job_id]["status"] = "failed"
-        _job_meta[job_id]["error"] = str(e)
+        _update_status(job_id, "failed", error=str(e))
         print(f"❌ Scheduled Instagram post failed — job_id={job_id}  error={e}")
 
 
 def _run_instagram_carousel(job_id: str, user_id: int, hosted_image_urls: list[str], caption: str):
     """Execute a scheduled Instagram carousel post."""
     from app.services import InstagramService
-    _job_meta[job_id]["status"] = "running"
+    _update_status(job_id, "running")
     try:
         from app.services.instagram_token_service import InstagramTokenService
         token_svc = InstagramTokenService()
@@ -72,12 +78,10 @@ def _run_instagram_carousel(job_id: str, user_id: int, hosted_image_urls: list[s
         creation_id = svc.create_carousel_media(hosted_image_urls, caption, access_token)
         import time; time.sleep(2)
         post_id = svc.publish_media_container(creation_id, access_token)
-        _job_meta[job_id]["status"] = "published"
-        _job_meta[job_id]["post_id"] = post_id
+        _update_status(job_id, "published", post_id=post_id)
         print(f"✅ Scheduled Instagram carousel published — post_id={post_id}  job_id={job_id}")
     except Exception as e:
-        _job_meta[job_id]["status"] = "failed"
-        _job_meta[job_id]["error"] = str(e)
+        _update_status(job_id, "failed", error=str(e))
         print(f"❌ Scheduled Instagram carousel failed — job_id={job_id}  error={e}")
 
 
@@ -90,53 +94,18 @@ def _run_linkedin_post(
 ):
     """Execute a scheduled LinkedIn post."""
     from app.services.linkedin_service import LinkedInService
-    _job_meta[job_id]["status"] = "running"
+    _update_status(job_id, "running")
     try:
         svc = LinkedInService()
         if file_path:
             post_id = svc.post_image(member_urn, text, file_path, access_token)
         else:
             post_id = svc.post_text(member_urn, text, access_token)
-        _job_meta[job_id]["status"] = "published"
-        _job_meta[job_id]["post_id"] = post_id
+        _update_status(job_id, "published", post_id=post_id)
         print(f"✅ Scheduled LinkedIn post published — post_id={post_id}  job_id={job_id}")
     except Exception as e:
-        _job_meta[job_id]["status"] = "failed"
-        _job_meta[job_id]["error"] = str(e)
+        _update_status(job_id, "failed", error=str(e))
         print(f"❌ Scheduled LinkedIn post failed — job_id={job_id}  error={e}")
-
-
-def _run_x_post(
-    job_id: str,
-    x_user_id: str,
-    access_token: str,
-    text: Optional[str] = None,
-    file_path: Optional[str] = None,
-):
-    """Execute a scheduled X (Twitter) post."""
-    import asyncio
-    from app.services.x_client import x_client
-    _job_meta[job_id]["status"] = "running"
-    
-    async def _async_logic():
-        media_ids = []
-        if file_path:
-            media_id = await x_client.upload_media(access_token, file_path)
-            media_ids.append(media_id)
-            
-        return await x_client.post_tweet(access_token, text, media_ids=media_ids if media_ids else None)
-
-    try:
-        tweet = asyncio.run(_async_logic())
-        _job_meta[job_id]["status"] = "published"
-        _job_meta[job_id]["post_id"] = tweet.get("id")
-        print(f"✅ Scheduled X post published — tweet_id={tweet.get('id')}  job_id={job_id}")
-    except Exception as e:
-        _job_meta[job_id]["status"] = "failed"
-        _job_meta[job_id]["error"] = str(e)
-        print(f"❌ Scheduled X post failed — job_id={job_id}  error={e}")
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +120,7 @@ def schedule_instagram_post(
     caption: str,
 ) -> str:
     job_id = str(uuid.uuid4())
-    _job_meta[job_id] = _make_meta(job_id, "instagram", scheduled_at, user_id)
+    _store_meta(job_id, "instagram", scheduled_at, user_id, image_url=hosted_image_url, caption=caption)
     scheduler.add_job(
         _run_instagram_post,
         trigger="date",
@@ -177,7 +146,7 @@ def schedule_instagram_carousel(
     caption: str,
 ) -> str:
     job_id = str(uuid.uuid4())
-    _job_meta[job_id] = _make_meta(job_id, "instagram_carousel", scheduled_at, user_id)
+    _store_meta(job_id, "instagram_carousel", scheduled_at, user_id, caption=caption)
     scheduler.add_job(
         _run_instagram_carousel,
         trigger="date",
@@ -205,7 +174,7 @@ def schedule_linkedin_post(
     file_path: Optional[str] = None,
 ) -> str:
     job_id = str(uuid.uuid4())
-    _job_meta[job_id] = _make_meta(job_id, "linkedin", scheduled_at, user_id)
+    _store_meta(job_id, "linkedin", scheduled_at, user_id, caption=text)
     scheduler.add_job(
         _run_linkedin_post,
         trigger="date",
@@ -224,48 +193,45 @@ def schedule_linkedin_post(
     return job_id
 
 
-def schedule_x_post(
-    scheduler: "BackgroundScheduler",
-    scheduled_at: datetime,
-    user_id: int,
-    x_user_id: str,
-    access_token: str,
-    text: Optional[str] = None,
-    file_path: Optional[str] = None,
-) -> str:
-    job_id = str(uuid.uuid4())
-    _job_meta[job_id] = _make_meta(job_id, "x", scheduled_at, user_id)
-    scheduler.add_job(
-        _run_x_post,
-        trigger="date",
-        run_date=scheduled_at,
-        kwargs={
-            "job_id": job_id,
-            "x_user_id": x_user_id,
-            "access_token": access_token,
-            "text": text,
-            "file_path": file_path,
-        },
-        id=job_id,
-        replace_existing=False,
-        misfire_grace_time=300,
-    )
     return job_id
 
 
-
 def list_jobs(user_id: int) -> List[dict]:
-    """Return metadata for all tracked jobs for a specific user."""
-    return [meta for meta in _job_meta.values() if meta.get("user_id") == user_id]
+    """Return metadata for all tracked jobs for a specific user from database."""
+    with db.get_connection() as conn:
+        cursor = conn.execute("SELECT * FROM scheduled_posts WHERE user_id = ? ORDER BY scheduled_at DESC", (user_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_stats(user_id: int) -> dict:
+    """Return aggregated status counts for the user."""
+    with db.get_connection() as conn:
+        cursor = conn.execute("""
+            SELECT 
+                COUNT(*) FILTER (WHERE status = 'published') as published,
+                COUNT(*) FILTER (WHERE status = 'pending') as scheduled,
+                COUNT(*) FILTER (WHERE status = 'failed') as failed
+            FROM scheduled_posts 
+            WHERE user_id = ?
+        """, (user_id,))
+        row = cursor.fetchone()
+        return {
+            "published": row['published'] or 0,
+            "scheduled": row['scheduled'] or 0,
+            "failed": row['failed'] or 0
+        }
 
 
 def cancel_job(scheduler: "BackgroundScheduler", job_id: str, user_id: int) -> bool:
     """Remove a pending job if it belongs to the user. Returns True if found and removed."""
-    if job_id in _job_meta and _job_meta[job_id].get("user_id") == user_id:
-        try:
-            scheduler.remove_job(job_id)
-        except Exception:
-            pass  # Already fired or doesn't exist in scheduler
-        _job_meta[job_id]["status"] = "cancelled"
-        return True
+    with db.get_connection() as conn:
+        cursor = conn.execute("SELECT user_id FROM scheduled_posts WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        if row and row['user_id'] == user_id:
+            try:
+                scheduler.remove_job(job_id)
+            except Exception:
+                pass  # Already fired or doesn't exist in scheduler
+            _update_status(job_id, "cancelled")
+            return True
     return False

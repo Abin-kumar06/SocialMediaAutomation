@@ -192,6 +192,9 @@ class LinkedInService:
             upload_resp = requests.put(upload_url, data=f, headers=upload_headers)
             upload_resp.raise_for_status()
 
+        # Small delay to ensure LinkedIn processes the asset before we use it in a share
+        time.sleep(2)
+
         # 3. Create UGC Post
         post_url = "https://api.linkedin.com/v2/ugcPosts"
         post_payload = {

@@ -8,12 +8,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #764ba2;
-            --secondary: #667eea;
-            --bg-color: #0f172a;
-            --card-bg: rgba(30, 41, 59, 0.7);
-            --text-color: #f8fafc;
-            --glass-border: rgba(255, 255, 255, 0.1);
+            --bg-dark: #0a0c10;
+            --surface-dark: #141820;
+            --primary: #38bdf8;
+            --primary-glow: rgba(56, 189, 248, 0.3);
+            --accent: #94a3b8;
+            --accent-glow: rgba(148, 163, 184, 0.2);
+            --text-main: #f1f5f9;
+            --text-dim: #64748b;
+            --border: rgba(255, 255, 255, 0.08);
+            --glass-bg: rgba(15, 20, 28, 0.7);
+            --transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         * {
@@ -23,44 +28,104 @@
         }
 
         body {
-            font-family: 'Outfit', sans-serif;
-            background-color: var(--bg-color);
-            background-image:
-                radial-gradient(at 0% 0%, rgba(102, 126, 234, 0.15) 0, transparent 50%),
-                radial-gradient(at 100% 0%, rgba(118, 75, 162, 0.15) 0, transparent 50%);
-            color: var(--text-color);
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
+            overflow: hidden;
+        }
+
+        /* --- BACKGROUND MESH --- */
+        .mesh-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .mesh-circle {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(140px);
+            opacity: 0.15;
+            animation: float 25s infinite alternate ease-in-out;
+        }
+
+        .circle-1 {
+            width: 600px;
+            height: 600px;
+            background: var(--primary);
+            top: -100px;
+            right: -100px;
+        }
+
+        .circle-2 {
+            width: 500px;
+            height: 500px;
+            background: var(--accent);
+            bottom: -100px;
+            left: -100px;
+            animation-delay: -7s;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+
+            100% {
+                transform: translate(30px, 40px) scale(1.1);
+            }
         }
 
         .signup-card {
-            background: var(--card-bg);
+            background: var(--glass-bg);
             backdrop-filter: blur(16px);
-            border: 1px solid var(--glass-border);
-            border-radius: 24px;
-            padding: 40px;
+            border: 1px solid var(--border);
+            border-radius: 32px;
+            padding: 48px;
             width: 100%;
             max-width: 450px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 40px 80px -20px rgba(0, 0, 0, 0.6);
             text-align: center;
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         h1 {
+            font-family: 'Outfit', sans-serif;
             font-size: 2.5rem;
-            font-weight: 700;
+            font-weight: 800;
             margin-bottom: 8px;
-            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+            background: linear-gradient(135deg, #fff 0%, var(--text-dim) 100%);
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
         .subtitle {
-            color: #94a3b8;
+            color: var(--text-dim);
             margin-bottom: 32px;
+            font-size: 0.95rem;
         }
 
         .form-group {
@@ -72,65 +137,76 @@
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
-            color: #e2e8f0;
-            font-size: 0.9rem;
+            color: var(--text-main);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
         input {
             width: 100%;
-            background: rgba(15, 23, 42, 0.5);
-            border: 1px solid var(--glass-border);
-            border-radius: 12px;
-            padding: 14px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
             color: white;
             font-family: inherit;
-            transition: all 0.3s;
+            transition: var(--transition);
         }
 
         input:focus {
             outline: none;
-            border-color: var(--secondary);
-            background: rgba(15, 23, 42, 0.8);
-            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.06);
+            box-shadow: 0 0 20px var(--primary-glow);
         }
 
         .btn {
             width: 100%;
-            padding: 14px;
-            border-radius: 12px;
+            padding: 16px;
+            border-radius: 16px;
             border: none;
             font-weight: 700;
             cursor: pointer;
-            transition: all 0.3s;
-            background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+            transition: var(--transition);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
             color: white;
             font-family: inherit;
             margin-top: 10px;
+            font-size: 1rem;
+            box-shadow: 0 10px 20px -5px var(--primary-glow);
         }
 
         .btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px -5px rgba(118, 75, 162, 0.5);
+            box-shadow: 0 15px 30px -10px var(--primary-glow);
         }
 
         .footer-links {
             margin-top: 24px;
             font-size: 0.9rem;
-            color: #94a3b8;
+            color: var(--text-dim);
         }
 
         .footer-links a {
-            color: var(--secondary);
+            color: var(--primary);
             text-decoration: none;
             font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .footer-links a:hover {
+            color: #fff;
+            text-shadow: 0 0 10px var(--primary-glow);
         }
 
         .status-msg {
             margin-top: 15px;
-            padding: 12px;
-            border-radius: 8px;
+            padding: 14px;
+            border-radius: 12px;
             display: none;
             font-size: 0.85rem;
+            font-weight: 600;
         }
 
         .error {
@@ -140,14 +216,18 @@
         }
 
         .success {
-            background: rgba(34, 197, 94, 0.1);
-            color: #4ade80;
-            border: 1px solid rgba(34, 197, 94, 0.2);
+            background: rgba(16, 185, 129, 0.1);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.2);
         }
     </style>
 </head>
 
 <body>
+    <div class="mesh-bg">
+        <div class="mesh-circle circle-1"></div>
+        <div class="mesh-circle circle-2"></div>
+    </div>
     <div class="signup-card">
         <h1>Join Us</h1>
         <p class="subtitle">Create your Social Automator account</p>

@@ -44,6 +44,8 @@ class Database:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS instagram_accounts (
                     user_id INTEGER PRIMARY KEY,
+                    instagram_account_id TEXT,
+                    username TEXT,
                     access_token TEXT NOT NULL,
                     expires_at DATETIME NOT NULL,
                     last_refreshed_at DATETIME NOT NULL,
@@ -65,6 +67,22 @@ class Database:
                     FOREIGN KEY (user_id) REFERENCES users (id)
                 )
             """)
+
+            # Scheduled posts table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS scheduled_posts (
+                    job_id TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    platform TEXT NOT NULL,
+                    scheduled_at DATETIME NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    post_id TEXT,
+                    error TEXT,
+                    image_url TEXT,
+                    caption TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            """)
             
             # Migration for linkedin_accounts to add user_id if missing
             cursor = conn.execute("PRAGMA table_info(linkedin_accounts)")
@@ -77,6 +95,14 @@ class Database:
                 # or just add it if the table is empty.
                 conn.execute("ALTER TABLE linkedin_accounts ADD COLUMN user_id INTEGER DEFAULT 1 REFERENCES users(id)")
                 print("Successfully added user_id column to linkedin_accounts")
+
+            # Migration for instagram_accounts to add missing columns
+            cursor = conn.execute("PRAGMA table_info(instagram_accounts)")
+            columns = [column[1] for column in cursor.fetchall()]
+            if columns and "instagram_account_id" not in columns:
+                print("Migrating instagram_accounts table: adding account_id and username columns")
+                conn.execute("ALTER TABLE instagram_accounts ADD COLUMN instagram_account_id TEXT")
+                conn.execute("ALTER TABLE instagram_accounts ADD COLUMN username TEXT")
 
             conn.commit()
 

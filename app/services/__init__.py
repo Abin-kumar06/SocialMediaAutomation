@@ -32,12 +32,8 @@ _legacy: ModuleType = _load_legacy_services()
 ImageService = getattr(_legacy, "ImageService")
 InstagramService = getattr(_legacy, "InstagramService")
 
-# New Ollama Service
-from app.services.ollama_caption_service import OllamaCaptionService
-
 __all__ = [
     "ImageService",
     "InstagramService",
-    "OllamaCaptionService",
 ]
 

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 # Load from project root .env (same folder as main.py)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(_PROJECT_ROOT / ".env")
+load_dotenv(_PROJECT_ROOT / ".env", override=True)
 
 
 def update_env_token(key: str, value: str) -> bool:
@@ -55,10 +55,10 @@ class Settings:
     IMGBB_API_KEY = os.getenv("IMGBB_API_KEY", "")
     IMGUR_CLIENT_ID = os.getenv("IMGUR_CLIENT_ID", "")
     
-    # Ollama AI Content Generation
-    OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
-    
+    # OpenAI AI Content Generation
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+
     # Catbox.moe (Public image hosting)
     CATBOX_USER_HASH = os.getenv("CATBOX_USER_HASH", "")
     
@@ -95,7 +95,7 @@ class Settings:
             "access_token_configured": bool(self.PAGE_ACCESS_TOKEN),
             "instagram_account_configured": bool(self.INSTAGRAM_ACCOUNT_ID),
             "fb_app_credentials_configured": bool(self.FB_APP_ID and self.FB_APP_SECRET),
-            "ollama_configured": bool(self.OLLAMA_BASE_URL),
+            "openai_configured": bool(self.OPENAI_API_KEY),
             "catbox_configured": True,  # Standard use doesn't require hash
             "hosting_available": bool(self.IMGBB_API_KEY or self.IMGUR_CLIENT_ID or True),
             "linkedin_configured": bool(self.LINKEDIN_CLIENT_ID and self.LINKEDIN_CLIENT_SECRET and self.LINKEDIN_REDIRECT_URI),

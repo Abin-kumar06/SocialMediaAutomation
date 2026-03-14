@@ -41,14 +41,20 @@ class InstagramTokenService:
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
         return long_token, expires_at
 
-    def store_long_lived_token(self, user_id: int, long_token: str, expires_at: datetime):
+    def store_long_lived_token(self, user_id: int, long_token: str, expires_at: datetime, account_id: Optional[str] = None, username: Optional[str] = None):
         with db.get_connection() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO instagram_accounts 
-                (user_id, access_token, expires_at, last_refreshed_at, status) 
-                VALUES (?, ?, ?, ?, ?)
-            """, (user_id, long_token, expires_at, datetime.now(timezone.utc), "active"))
+                (user_id, instagram_account_id, username, access_token, expires_at, last_refreshed_at, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, account_id, username, long_token, expires_at, datetime.now(timezone.utc), "active"))
             conn.commit()
+
+    def get_record(self, user_id: int) -> Optional[dict]:
+        with db.get_connection() as conn:
+            cursor = conn.execute("SELECT * FROM instagram_accounts WHERE user_id = ?", (user_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
 
     def get_access_token_for_user(self, user_id: int) -> str:
         with db.get_connection() as conn:
@@ -84,6 +90,47 @@ class InstagramTokenService:
         if resp.status_code >= 400 or data.get("error"):
             self._raise_for_meta_error(data)
         return data["access_token"], datetime.now(timezone.utc) + timedelta(seconds=int(data["expires_in"]))
+
+    def fetch_account_info_from_token(self, access_token: str) -> dict:
+        """Fetch primary Instagram Business Account ID and username from a token."""
+        # 1. Get Me (Permissions)
+        me_resp = requests.get(f"https://graph.facebook.com/v24.0/me/accounts", params={"access_token": access_token}, timeout=20)
+        me_data = me_resp.json()
+        if "error" in me_data:
+            self._raise_for_meta_error(me_data)
+        
+        pages = me_data.get("data", [])
+        if not pages:
+            raise RuntimeError("No Facebook Pages found for this user.")
+        
+        # 2. Find first page with an IG business account
+        for page in pages:
+            page_id = page["id"]
+            page_token = page.get("access_token") # Page access token if available
+            
+            ig_resp = requests.get(
+                f"https://graph.facebook.com/v24.0/{page_id}", 
+                params={"fields": "instagram_business_account", "access_token": access_token}, 
+                timeout=20
+            )
+            ig_data = ig_resp.json()
+            ig_biz = ig_data.get("instagram_business_account")
+            if ig_biz:
+                ig_id = ig_biz["id"]
+                # 3. Get IG username
+                user_resp = requests.get(
+                    f"https://graph.facebook.com/v24.0/{ig_id}", 
+                    params={"fields": "username,name", "access_token": access_token}, 
+                    timeout=20
+                )
+                user_data = user_resp.json()
+                return {
+                    "instagram_account_id": ig_id,
+                    "username": user_data.get("username", "Unknown"),
+                    "name": user_data.get("name", "")
+                }
+        
+        raise RuntimeError("No Instagram Business Account linked to your Facebook Pages.")
 
     def _raise_for_meta_error(self, data: dict):
         error = data.get("error", {})

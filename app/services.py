@@ -331,9 +331,10 @@ class ImageService:
 class InstagramService:
     """Handle Instagram API operations"""
     
-    def create_media_container(self, image_url: str, caption: str, access_token: str) -> str:
+    def create_media_container(self, image_url: str, caption: str, access_token: str, instagram_account_id: Optional[str] = None) -> str:
         """Create Instagram media container"""
-        url = f"{settings.GRAPH_API_BASE}/{settings.INSTAGRAM_ACCOUNT_ID}/media"
+        target_account_id = instagram_account_id or settings.INSTAGRAM_ACCOUNT_ID
+        url = f"{settings.GRAPH_API_BASE}/{target_account_id}/media"
         payload = {
             'image_url': image_url,
             'caption': caption,
@@ -368,13 +369,14 @@ class InstagramService:
                 detail=f"Failed to create container: {str(e)}"
             )
 
-    def create_carousel_media(self, image_urls: List[str], caption: str, access_token: str) -> str:
+    def create_carousel_media(self, image_urls: List[str], caption: str, access_token: str, instagram_account_id: Optional[str] = None) -> str:
         """Create a carousel (multi-photo) media container."""
+        target_account_id = instagram_account_id or settings.INSTAGRAM_ACCOUNT_ID
         child_ids: List[str] = []
 
         # Create child containers
         for img_url in image_urls:
-            url = f"{settings.GRAPH_API_BASE}/{settings.INSTAGRAM_ACCOUNT_ID}/media"
+            url = f"{settings.GRAPH_API_BASE}/{target_account_id}/media"
             payload = {
                 'image_url': img_url,
                 'access_token': access_token
@@ -412,7 +414,7 @@ class InstagramService:
             album_payload[f'children[{idx}]'] = child_id
 
         try:
-            album_resp = requests.post(album_url, data=album_payload, timeout=30)
+            album_resp = requests.post(f"{settings.GRAPH_API_BASE}/{target_account_id}/media", data=album_payload, timeout=30)
             album_result = album_resp.json()
             if 'error' in album_result:
                 raise HTTPException(
@@ -427,9 +429,10 @@ class InstagramService:
                 detail=f"Failed to create album container: {str(e)}"
             )
     
-    def publish_media_container(self, creation_id: str, access_token: str) -> str:
+    def publish_media_container(self, creation_id: str, access_token: str, instagram_account_id: Optional[str] = None) -> str:
         """Publish Instagram media container"""
-        url = f"{settings.GRAPH_API_BASE}/{settings.INSTAGRAM_ACCOUNT_ID}/media_publish"
+        target_account_id = instagram_account_id or settings.INSTAGRAM_ACCOUNT_ID
+        url = f"{settings.GRAPH_API_BASE}/{target_account_id}/media_publish"
         payload = {
             'creation_id': creation_id,
             'access_token': access_token
@@ -471,9 +474,10 @@ class InstagramService:
                 detail=f"Failed to check status: {str(e)}"
             )
     
-    def get_account_info(self, access_token: str) -> dict:
+    def get_account_info(self, access_token: str, instagram_account_id: Optional[str] = None) -> dict:
         """Get Instagram account info"""
-        url = f"{settings.GRAPH_API_BASE}/{settings.INSTAGRAM_ACCOUNT_ID}"
+        target_account_id = instagram_account_id or settings.INSTAGRAM_ACCOUNT_ID
+        url = f"{settings.GRAPH_API_BASE}/{target_account_id}"
         params = {
             'fields': 'id,username,name,profile_picture_url,followers_count,follows_count,media_count',
             'access_token': access_token
